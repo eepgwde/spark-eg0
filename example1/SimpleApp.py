@@ -1,0 +1,15 @@
+"""SimpleApp.py"""
+from pyspark.sql import SparkSession
+
+# Any old file will do.
+logFile = "file:///misc/build/0/spark-srcs/example1/Makefile"  # Should be some file on your system
+spark = SparkSession.builder.appName("SimpleApp").getOrCreate()
+logData = spark.read.text(logFile).cache()
+
+numAs = logData.filter(logData.value.contains('a')).count()
+numBs = logData.filter(logData.value.contains('b')).count()
+
+print("Lines with a: %i, lines with b: %i" % (numAs, numBs))
+
+spark.stop()
+

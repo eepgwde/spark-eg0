@@ -1,0 +1,7 @@
+.bloop/
+target/
+.ipynb_checkpoints/
+.metals/
+jars/*
+lib/*
+metastore_db/
