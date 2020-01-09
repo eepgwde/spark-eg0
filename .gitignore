@@ -5,3 +5,7 @@ target/
 jars/*
 lib/*
 metastore_db/
+spark-2.4.4/src/main/java/*
+spark-2.4.4/src/main/python/*
+spark-2.4.4/src/main/resources/*
+spark-2.4.4/src/main/scala/*
