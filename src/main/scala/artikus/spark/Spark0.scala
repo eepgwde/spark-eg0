@@ -130,7 +130,7 @@ object GetLog {
   def apply(n:Any) : Logger = {
     this.impl = n match {
       case n:String => this.impl.orElse(this.make(n,n))
-      case n:Class[_] => this.impl.orElse(this.make(n, n.getClass.getName))
+      case n:Class[_] => this.impl.orElse(this.make(n, n.getName))
     }
     return this.impl.get
   }
