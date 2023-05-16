@@ -6,19 +6,24 @@ version := "0.9"
 
 organization := "org.programming-scala"
 
-scalaVersion := "2.11.12"
+resolvers +=
+  ("Caeneus" at "http://caeneus.fritz.box:8081/repository/caeneus-3/").withAllowInsecureProtocol(true)
+
+scalaVersion := "2.12.17"
 
 libraryDependencies ++= Seq(
   "org.scala-lang.modules" %% "scala-async"     % "0.9.6",
   "org.scala-lang.modules" %% "scala-parser-combinators" % "1.1.2",
   "org.scala-lang.modules" %% "scala-xml"       % "1.2.0",
   "org.scala-lang"          % "scala-reflect"   % scalaVersion.value,
-  "ch.qos.logback"          % "logback-classic" % "1.2.3",
-  "com.typesafe.scala-logging" %% "scala-logging" % "3.7.2",
+  "org.slf4j"               % "slf4j-api"       % "1.7.36",
+  "ch.qos.logback"          % "logback-classic" % "1.2.12",
+  "com.typesafe.scala-logging" %% "scala-logging" % "3.9.5",
   "org.specs2" %% "specs2-core" % "4.6.0" % "test",
   // JUnit is used for some Java interop. examples. A driver for JUnit:
   "junit"                   % "junit-dep"       % "4.10"   % "test",
   "com.novocode"            % "junit-interface" % "0.10"   % "test",
+  "commons-io" 		    % "commons-io" % "2.11.0",
   scalaTest,
   scalaCheck
 )
