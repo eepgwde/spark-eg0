@@ -1,3 +1,7 @@
+*.log
+*~
+.bsp/
+.idea/
 .bloop/
 target/
 .ipynb_checkpoints/
