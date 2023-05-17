@@ -22,7 +22,6 @@ case class Scores0(id: Int, indices: mutable.WrappedArray[Int], scores: mutable.
 
 case class Scores1(word: String, score: Double)
 
-
 class UserLDA extends Serializable {
   val logger: Logger = Logger("UserLDA")
 
@@ -59,7 +58,10 @@ class UserLDA extends Serializable {
     nlp_model.transform(df0)
   }
 
-  val cv = new CountVectorizer().setInputCol("tokens").setOutputCol("features").setVocabSize(500).setMinTF(3.0)
+  val vocabN = 500
+  val minTF = 3.0
+
+  val cv = new CountVectorizer().setInputCol("tokens").setOutputCol("features").setVocabSize(vocabN).setMinTF(minTF)
 
   var cv_model: Option[org.apache.spark.ml.feature.CountVectorizerModel] = None
 
@@ -85,16 +87,6 @@ class UserLDA extends Serializable {
   var itersN: Int = 10
 
   var bounds = ( 0.0, 0.0 )
-
-  /**
-   * Description for the topic scores.
-   *
-   * @param id
-   * @param indices
-   * @param scores
-   */
-
-
 
   /**
    * Applies LDA for topic-modelling.

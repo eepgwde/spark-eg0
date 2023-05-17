@@ -1,12 +1,8 @@
 package artikus.spark
 /** This is the Scaladoc for the package. */
 
-import java.io.File
-import org.apache.commons.io.FileUtils
-import org.apache.spark.sql.SparkSession
-import org.apache.spark.ExceptionFailure
 import org.apache.spark.SparkConf
-import org.apache.spark.sql.types._
+import org.apache.spark.sql.SparkSession
 
 import java.util.Properties
 import scala.collection.mutable
@@ -33,13 +29,6 @@ object Session0 {
 
   def configure(): SparkConf = {
     val conf = new SparkConf()
-
-    // launcher.master = "yarn"
-    // launcher.conf.spark.app.name = "spark-lda"
-    // launcher.conf.spark.executor.cores = 8
-    // launcher.num_executors = 4
-    // launcher.executor_cores = 4
-    // launcher.driver_memory = '4g'
 
     // YARN - can't be invoked from here.
     // conf.setMaster("yarn-client")
@@ -72,7 +61,6 @@ object Session0 {
 
   def instance: SparkSession = {
     val s1 = SparkSession.builder().config(config0).master("local[*]").getOrCreate()
-    import s1.implicits._
     session0 = Some(s1)
     session0.get
   }
