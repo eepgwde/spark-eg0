@@ -7,6 +7,10 @@ import org.apache.spark.sql.{DataFrame, Encoder, Encoders, Row, SparkSession}
 import org.scalatest.funspec.AnyFunSpec
 
 import scala.collection.mutable
+
+/**
+ * Prototyping test.
+ */
 class UserLDATest extends AnyFunSpec with org.scalatest.Inspectors
     with org.scalatest.matchers.should.Matchers {
 
@@ -58,6 +62,14 @@ class UserLDATest extends AnyFunSpec with org.scalatest.Inspectors
       df1 should not be (None)
     }
     it("pipeline1 - count vectorization") {
+      // set some parameters here
+      // this matches the settings in scala-lda and usually hits 3 in just over 10 minutes
+      // 4 cores and 4 g 
+      modeller.itersN = 100
+      modeller.tokensN = 100000
+      modeller.vocabN = 500
+      modeller.minTF = 3.0
+
       df1 should not be (None)
       df2 = Some(modeller.pipeline1(df1.get))
       df2 should not be (None)
@@ -76,6 +88,11 @@ class UserLDATest extends AnyFunSpec with org.scalatest.Inspectors
     it("display - topics") {
       words should not be (None)
       modeller.display()
+    }
+    it("quality - messages classified") {
+      val tr0 = modeller.quality0()
+      logger.info(s"quality: ${tr0}")
+      tr0.length should not be 0
     }
   }
 }

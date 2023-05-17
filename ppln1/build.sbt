@@ -56,3 +56,6 @@ libraryDependencies ++= Seq(
   scalaCheck
 )
 
+Compile / doc / scalacOptions ++= Seq("-groups", "-implicits")
+
+Compile / doc / javacOptions ++= Seq("-notimestamp", "-linksource")
