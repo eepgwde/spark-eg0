@@ -1,7 +1,25 @@
 <!-- weaves : logging for test -->
 
 <configuration>
+    <logger name="org.apache.spark" level="OFF" additivity="false">
+    </logger>
+
+    <logger name="org.apache.hadoop" level="OFF" additivity="false">
+    </logger>
+
+    <logger name="org.sparkproject.jetty" level="OFF" additivity="false">
+    </logger>
+
+    <logger name="io.netty" level="OFF" additivity="false">
+    </logger>
+
     <appender name="console" class="ch.qos.logback.core.ConsoleAppender">
+	<target>System.err</target>
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">
+            <level>WARN</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
+        </filter>
         <encoder>
 	    <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} -%kvp- %msg%n</pattern>
         </encoder>

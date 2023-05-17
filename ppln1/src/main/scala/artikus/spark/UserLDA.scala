@@ -1,5 +1,6 @@
 package artikus.spark
 
+import com.amazonaws.services.quicksight.model.DataSet
 import com.johnsnowlabs.nlp.DocumentAssembler
 import com.johnsnowlabs.nlp.annotators.Tokenizer
 import com.johnsnowlabs.nlp.annotators.Normalizer
@@ -13,10 +14,12 @@ import org.apache.spark.ml.clustering.LDA
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{DataFrame, Dataset, Row, SparkSession}
 import org.apache.spark.sql.types._
+import com.typesafe.scalalogging.Logger
 
 import scala.collection.mutable
 
 class UserLDA {
+  val logger: Logger = Logger("UserLDA")
 
   // Split sentence to tokens(array)
   val document_assembler = new DocumentAssembler().setInputCol("headline_text").setOutputCol("document").setCleanupMode("shrink")
@@ -48,7 +51,7 @@ class UserLDA {
    */
   def pipeline0(df0: DataFrame): DataFrame = {
     val nlp_model = nlp_pipeline.fit(df0)
-    return nlp_model.transform(df0)
+    nlp_model.transform(df0)
   }
 
   val cv = new CountVectorizer().setInputCol("tokens").setOutputCol("features").setVocabSize(500).setMinTF(3.0)
@@ -69,7 +72,7 @@ class UserLDA {
     val df1 = df0.select("publish_date","tokens").limit(tokensN)
     val cv_model = cv.fit(df1)
     vocab = Some(cv_model.vocabulary)
-    return cv_model.transform(df1)
+    cv_model.transform(df1)
   }
 
   var topicsN = 5
@@ -86,7 +89,7 @@ class UserLDA {
     val lp = model.logPerplexity(vdf0)
     val topics = model.describeTopics(topicsN)
     transformed = Option(model.transform(vdf0))
-    return topics.rdd
+    topics.rdd
   }
 
   val schema = new StructType()
@@ -96,23 +99,38 @@ class UserLDA {
 
   case class Table1(id: Int, indices: mutable.WrappedArray[Int], scores: mutable.WrappedArray[Double])
 
-  def pipeline3(df1: DataFrame, spark: SparkSession) : List[mutable.WrappedArray[(String, Double)]]  = {
+  var df2 : Option[Dataset[this.Table1]] = None
+
+  /**
+   * Topic and Vocabulary scores
+   * @param df1
+   * @param spark
+   * @return
+   */
+  def pipeline3(rdd3: RDD[Row], spark: SparkSession) : List[mutable.WrappedArray[(String, Double)]]  = {
     import spark.implicits._
+
+    val df1 = spark.createDataFrame(rdd3, schema)
 
     // Cast the dataframe to be of that type.
-    val df2 = df1.as[Table1]
-    val df3 = df2.map(x => x.indices.map(vocab.getOrElse(Array[String]())).zip(x.scores)).collect.toList.map {
+    df2 = Some(df1.as[this.Table1])
+    val df3 = df2.get.map(x => x.indices.map(vocab.getOrElse(Array[String]())).zip(x.scores)).collect.toList.map {
       _.map(x => (x._1, x._2))
     }
-    return df3
+    df3
   }
 
-  def display(df0: Dataset[Table1], spark: SparkSession) {
+  /**
+   * Print the output
+   * @param df0
+   * @param spark
+   */
+  def display(spark: SparkSession) {
     import spark.implicits._
-    val df3 = df0.map(x => x.indices.map(vocab.getOrElse(Array[String]())).zip(x.scores)).collect.toList.map {
+    val df3 = df2.get.map(x => x.indices.map(vocab.getOrElse(Array[String]())).zip(x.scores)).collect.toList.map {
       _.map(x => (x._1, x._2))
     }
-    df3.map(y => { println("::"); y.map(x => println(x._1 + " :: " + x._2) ) } );
+    df3.map(y => { println("::"); y.map(x => logger.info(x._1 + " :: " + x._2) ) } );
   }
 
 }
