@@ -6,8 +6,10 @@ import org.apache.commons.io.FileUtils
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.ExceptionFailure
 import org.apache.spark.SparkConf
+import org.apache.spark.sql.types._
 
 import java.util.Properties
+import scala.collection.mutable
 
 class Identity(val version:String = "0.4")
 
@@ -64,7 +66,16 @@ object Session0 {
 
   val config0: SparkConf = configure()
 
-  def session: SparkSession = SparkSession.builder().config(config0).master("local[*]").getOrCreate()
+  var session0 : Option[SparkSession] = None
+
+  case class Table1(id: Int, indices: mutable.WrappedArray[Int], scores: mutable.WrappedArray[Double])
+
+  def instance: SparkSession = {
+    val s1 = SparkSession.builder().config(config0).master("local[*]").getOrCreate()
+    import s1.implicits._
+    session0 = Some(s1)
+    session0.get
+  }
 }
 
 // * Postamble

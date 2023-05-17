@@ -26,7 +26,8 @@
     </appender>
 
     <appender name="file" class="ch.qos.logback.core.FileAppender">
-        <file>${weaves.log-file:-weaves.log}</file>
+        <file>weaves.log</file>
+        <append>false</append>
         <encoder>
 	    <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} -%kvp- %msg%n</pattern>
         </encoder>

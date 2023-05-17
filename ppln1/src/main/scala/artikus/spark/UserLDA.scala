@@ -18,7 +18,12 @@ import com.typesafe.scalalogging.Logger
 
 import scala.collection.mutable
 
-class UserLDA {
+case class Scores0(id: Int, indices: mutable.WrappedArray[Int], scores: mutable.WrappedArray[Double])
+
+case class Scores1(word: String, score: Double)
+
+
+class UserLDA extends Serializable {
   val logger: Logger = Logger("UserLDA")
 
   // Split sentence to tokens(array)
@@ -58,7 +63,7 @@ class UserLDA {
 
   var cv_model: Option[org.apache.spark.ml.feature.CountVectorizerModel] = None
 
-  var tokensN: Int = 100000
+  var tokensN: Int = 100
   var vocab: Option[Array[String]] = None
 
   /**
@@ -77,57 +82,57 @@ class UserLDA {
 
   var topicsN = 5
   var transformed: Option[DataFrame] = None
-  var itersN: Int = 100
+  var itersN: Int = 10
 
   var bounds = ( 0.0, 0.0 )
 
   /**
-   * Applies LDA for topic-modelling.
+   * Description for the topic scores.
+   *
+   * @param id
+   * @param indices
+   * @param scores
    */
-  def pipeline2(vdf0: DataFrame): RDD[Row] = {
+
+
+
+  /**
+   * Applies LDA for topic-modelling.
+   *
+   * This produces an RDD that only has as many rows as there are topics, so it can be converted to a list.
+   */
+  def pipeline2(vdf0: DataFrame): List[Scores0] = {
     val lda = new LDA().setK(topicsN).setMaxIter(itersN)
     val model = lda.fit(vdf0)
     bounds = ( model.logLikelihood(vdf0), model.logPerplexity(vdf0) )
     val topics = model.describeTopics(topicsN)
     transformed = Option(model.transform(vdf0))
-    topics.rdd
+    topics.rdd.collect().toList.map(x => new Scores0(x.getInt(0),
+      x.getAs[mutable.WrappedArray[Int]](1),
+      x.getAs[mutable.WrappedArray[Double]](2)) )
   }
 
-  /**
-   * Description for a row
-   * @param id
-   * @param indices
-   * @param scores
-   */
-  case class Table1(id: Int, indices: mutable.WrappedArray[Int], scores: mutable.WrappedArray[Double])
-  case class Table2(scores: mutable.WrappedArray[(String, Double)])
-
-  var df2 : Option[Dataset[this.Table1]] = None
-  var desc : Option[List[mutable.WrappedArray[(String, Double)]]] = None
+  // var ds1 : Option[Serializable] = None
+  var desc : Option[List[List[Scores1]]] = None
 
   /**
    * Topic and Vocabulary scores
+   *
+   * In the Scala REPL, it is possible to use Scala implicits to convert.
+   * It is proving difficult to do this.
+   * df2 = Some(df1.as[Table1](arg0)
+   *
    * @param df1
    * @param spark
    * @return
    */
-  def pipeline3(rdd3: RDD[Row]) : List[mutable.WrappedArray[(String, Double)]]  = {
-    val spark = SparkSession.builder().getOrCreate()
-    logger.debug("pipeline3: spark")
-    implicit val scoreEncoder = Encoders.bean[Table1](classOf[Table1])
+  def pipeline3(byTopic: List[Scores0]) : Option[ List[List[Scores1]] ] = {
 
-    val df1 = spark.createDataFrame(rdd3, scoreEncoder.schema)
+    val desc0 = byTopic.map(x => x.indices.map(vocab.get).zip(x.scores))
+    val desc1 = desc0.map( _.map(x => new Scores1(x._1, x._2)).toList )
 
-    logger.debug("pipeline3: df1")
-    df2 = Some(df1.as(scoreEncoder))
-
-    implicit val scoreEncoder2 =
-      Encoders.bean[mutable.WrappedArray[(String, Double)]](classOf[mutable.WrappedArray[(String, Double)]])
-
-    desc = Some(df2.get.map(x => x.indices.map(vocab.get).zip(x.scores)).collect.toList.map {
-      _.map(x => (x._1, x._2))
-    })
-    desc.get
+    desc = Some(desc1)
+    desc
   }
 
   /**
@@ -136,7 +141,12 @@ class UserLDA {
    * @param spark
    */
   def display() {
-    desc.get.map(y => { println("::"); y.map(x => logger.info(x._1 + " :: " + x._2) ) } );
+    val x0 = desc.get.zipWithIndex.foreach {
+      case (y, i) => {
+        logger.info("::" + i);
+        y.map(x => logger.info(x.word + " :: " + x.score));
+      }
+    }
   }
 
 }

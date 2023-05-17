@@ -3,7 +3,7 @@ package artikus.spark
 
 import com.typesafe.scalalogging.Logger
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.{DataFrame, Row, SparkSession}
+import org.apache.spark.sql.{DataFrame, Encoder, Encoders, Row, SparkSession}
 import org.scalatest.funspec.AnyFunSpec
 
 import scala.collection.mutable
@@ -11,16 +11,16 @@ class UserLDATest extends AnyFunSpec with org.scalatest.Inspectors
     with org.scalatest.matchers.should.Matchers {
 
   val l0: Logger = Logger("UserLDATest")
+  val logger = l0
 
   val modeller = new UserLDA()
-  var session: Option[SparkSession] = None
 
   // case class Table1(id: Int, indices: mutable.WrappedArray[Int], scores: mutable.WrappedArray[Double])
 
-
   var df1: Option[DataFrame] = None
   var df2: Option[DataFrame] = None
-  var rdd3: Option[RDD[Row]] = None
+  var topics: Option[List[Scores0]] = None
+  var words: Option[List[List[Scores1]]] = None
   var desc: Option[List[mutable.WrappedArray[(String, Double)]]] = None
 
   describe ("LDA processing") {
@@ -36,10 +36,10 @@ class UserLDATest extends AnyFunSpec with org.scalatest.Inspectors
       l0.info(conf0.toDebugString)
     }
     it("pipeline0 - load and simplify") {
-      session = Some(Session0.session)
+      val session = Session0.instance
       session should not be null
 
-      l0.info(session.get.version)
+      l0.info(session.version)
 
       val url = "file:///a/l/X-image/cache/data/abcnews-date-text.csv"
 
@@ -48,7 +48,7 @@ class UserLDATest extends AnyFunSpec with org.scalatest.Inspectors
       val first_row_is_header = "true"
       val delimiter = ","
 
-      val df0 = session.get.read.format(type0)
+      val df0 = session.read.format(type0)
         .option("inferSchema", infer_schema)
         .option("header", first_row_is_header)
         .option("sep", delimiter)
@@ -62,19 +62,19 @@ class UserLDATest extends AnyFunSpec with org.scalatest.Inspectors
       df2 = Some(modeller.pipeline1(df1.get))
       df2 should not be (None)
     }
-    it("pipeline2 - LDA fit") {
+    it("pipeline2 - LDA fit - topics with words then scores") {
       df2 should not be (None)
-      rdd3 = Some(modeller.pipeline2(df2.get))
-      rdd3 should not be (None)
+      topics = Some(modeller.pipeline2(df2.get))
+      topics should not be (None)
     }
-    it("pipeline3 - map vocabulary to topics") {
-      rdd3 should not be (None)
-      desc = Some(modeller.pipeline3(rdd3.get))
-      // List[mutable.WrappedArray[(String, Double)]]
-      desc should not be (None)
+    it("pipeline3 - topic each word with score") {
+      topics should not be (None)
+
+      words = modeller.pipeline3(topics.get)
+      words should not be (None)
     }
     it("display - topics") {
-      desc should not be (None)
+      words should not be (None)
       modeller.display()
     }
   }
