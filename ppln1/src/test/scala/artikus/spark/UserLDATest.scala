@@ -69,13 +69,13 @@ class UserLDATest extends AnyFunSpec with org.scalatest.Inspectors
     }
     it("pipeline3 - map vocabulary to topics") {
       rdd3 should not be (None)
-      desc = Some(modeller.pipeline3(rdd3.get, session.get))
+      desc = Some(modeller.pipeline3(rdd3.get))
       // List[mutable.WrappedArray[(String, Double)]]
       desc should not be (None)
     }
     it("display - topics") {
       desc should not be (None)
-      modeller.display(session.get)
+      modeller.display()
     }
   }
 }

@@ -12,7 +12,7 @@ import org.apache.spark.ml.feature.CountVectorizer
 import org.apache.spark.ml.feature.CountVectorizerModel
 import org.apache.spark.ml.clustering.LDA
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.{DataFrame, Dataset, Row, SparkSession}
+import org.apache.spark.sql.{DataFrame, Dataset, Encoder, Encoders, Row, SparkSession}
 import org.apache.spark.sql.types._
 import com.typesafe.scalalogging.Logger
 
@@ -79,27 +79,31 @@ class UserLDA {
   var transformed: Option[DataFrame] = None
   var itersN: Int = 100
 
+  var bounds = ( 0.0, 0.0 )
+
   /**
    * Applies LDA for topic-modelling.
    */
   def pipeline2(vdf0: DataFrame): RDD[Row] = {
     val lda = new LDA().setK(topicsN).setMaxIter(itersN)
     val model = lda.fit(vdf0)
-    val ll = model.logLikelihood(vdf0)
-    val lp = model.logPerplexity(vdf0)
+    bounds = ( model.logLikelihood(vdf0), model.logPerplexity(vdf0) )
     val topics = model.describeTopics(topicsN)
     transformed = Option(model.transform(vdf0))
     topics.rdd
   }
 
-  val schema = new StructType()
-    .add(StructField("id", IntegerType, false))
-    .add(StructField("indices", ArrayType(IntegerType, true)))
-    .add(StructField("scores", ArrayType(DoubleType, true)))
-
+  /**
+   * Description for a row
+   * @param id
+   * @param indices
+   * @param scores
+   */
   case class Table1(id: Int, indices: mutable.WrappedArray[Int], scores: mutable.WrappedArray[Double])
+  case class Table2(scores: mutable.WrappedArray[(String, Double)])
 
   var df2 : Option[Dataset[this.Table1]] = None
+  var desc : Option[List[mutable.WrappedArray[(String, Double)]]] = None
 
   /**
    * Topic and Vocabulary scores
@@ -107,30 +111,32 @@ class UserLDA {
    * @param spark
    * @return
    */
-  def pipeline3(rdd3: RDD[Row], spark: SparkSession) : List[mutable.WrappedArray[(String, Double)]]  = {
-    import spark.implicits._
+  def pipeline3(rdd3: RDD[Row]) : List[mutable.WrappedArray[(String, Double)]]  = {
+    val spark = SparkSession.builder().getOrCreate()
+    logger.debug("pipeline3: spark")
+    implicit val scoreEncoder = Encoders.bean[Table1](classOf[Table1])
 
-    val df1 = spark.createDataFrame(rdd3, schema)
+    val df1 = spark.createDataFrame(rdd3, scoreEncoder.schema)
 
-    // Cast the dataframe to be of that type.
-    df2 = Some(df1.as[this.Table1])
-    val df3 = df2.get.map(x => x.indices.map(vocab.getOrElse(Array[String]())).zip(x.scores)).collect.toList.map {
+    logger.debug("pipeline3: df1")
+    df2 = Some(df1.as(scoreEncoder))
+
+    implicit val scoreEncoder2 =
+      Encoders.bean[mutable.WrappedArray[(String, Double)]](classOf[mutable.WrappedArray[(String, Double)]])
+
+    desc = Some(df2.get.map(x => x.indices.map(vocab.get).zip(x.scores)).collect.toList.map {
       _.map(x => (x._1, x._2))
-    }
-    df3
+    })
+    desc.get
   }
 
   /**
-   * Print the output
+   * Print the topics with vocabulary and scores.
    * @param df0
    * @param spark
    */
-  def display(spark: SparkSession) {
-    import spark.implicits._
-    val df3 = df2.get.map(x => x.indices.map(vocab.getOrElse(Array[String]())).zip(x.scores)).collect.toList.map {
-      _.map(x => (x._1, x._2))
-    }
-    df3.map(y => { println("::"); y.map(x => logger.info(x._1 + " :: " + x._2) ) } );
+  def display() {
+    desc.get.map(y => { println("::"); y.map(x => logger.info(x._1 + " :: " + x._2) ) } );
   }
 
 }
