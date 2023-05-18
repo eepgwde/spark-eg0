@@ -47,13 +47,8 @@ libraryDependencies ++= Seq(
   "org.scala-lang"          % "scala-reflect"   % scalaVersion.value,
   "ch.qos.logback"          % "logback-classic" % "1.4.7",
   "com.typesafe.scala-logging" %% "scala-logging" % "3.9.5",
-  "org.specs2" %% "specs2-core" % "4.6.0" % "test",
-  // JUnit is used for some Java interop. examples. A driver for JUnit:
-  "junit"                   % "junit-dep"       % "4.10"   % "test",
-  "com.novocode"            % "junit-interface" % "0.10"   % "test",
-  "commons-io" 		    % "commons-io" % "2.11.0",
-  scalaTest,
-  scalaCheck
+  "org.specs2" %% "specs2-core" % "4.19.2" % "test",
+  scalaTest
 )
 
 Compile / doc / scalacOptions ++= Seq("-groups", "-implicits")

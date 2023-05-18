@@ -45,7 +45,21 @@ The model's output is a Topic matrix and a transformer that assigns a Topic to a
 
 ## Implementation
 
+### Logging
 
+Spark uses log4j. I'm using ch.qos.logback, and it reports there are two logging implementations. I cannot use 
+just one.
+
+### Encoder
+
+Some issues with the Encoder for an object. Here is an example found somewhere. 
+
+implicit val encodeEmployee: Encoder[Employee] = new Encoder[Employee] {
+final def apply(a: Employee): Json = Json.obj(
+("name", Json.fromString(a.name)),
+("password", Json.fromString("[REDACTED]")),
+)
+}
 
 # Postamble
 

@@ -16,6 +16,7 @@ import org.apache.spark.sql.{DataFrame, Dataset, Encoder, Encoders, Row, SparkSe
 import org.apache.spark.sql.types._
 import com.typesafe.scalalogging.Logger
 
+import java.io.{IOException, ObjectInputStream}
 import scala.collection.mutable
 
 case class Scores0(id: Int, indices: mutable.WrappedArray[Int], scores: mutable.WrappedArray[Double])
@@ -47,7 +48,6 @@ case class Scores1(word: String, score: Double)
  */
 class UserLDA extends Serializable {
   val logger: Logger = Logger("UserLDA")
-
 
   // collates the input.
   val document_assembler = new DocumentAssembler().setInputCol("headline_text").setOutputCol("document").setCleanupMode("shrink")
@@ -82,7 +82,27 @@ class UserLDA extends Serializable {
    */
   def pipeline0(df0: DataFrame): DataFrame = {
     val nlp_model = nlp_pipeline.fit(df0)
-    nlp_model.transform(df0)
+    val stage1 = nlp_model.transform(df0)
+    stage0 = Some(stage1)
+    stage1
+  }
+
+  @transient var stage0: Option[DataFrame] = None
+
+  /**
+   * Write the output of a pipeline to Hive.
+   *
+   * This is for [[pipeline0]] and its output [[stage0]]. It is written to a final table called `stage0`.
+   */
+  def archive0() = {
+    if (stage0.isEmpty) ()
+
+    stage0.get.createTempView("tstage0")
+    val spark = stage0.get.sqlContext
+
+    spark.sql("drop table if exists stage0")
+    spark.sql("create table stage0 AS select * from tstage0")
+    spark.sql("drop table if exists tstage0")
   }
 
   /**
@@ -93,7 +113,6 @@ class UserLDA extends Serializable {
    * @group Input
    */
   var vocabN: Int = 500
-
 
   /**
    * Removal of infrequent items.
@@ -111,9 +130,17 @@ class UserLDA extends Serializable {
    */
   var minTF: Double = 3.0
 
+  /**
+   * The word count vectorizer pipeline component.
+   */
   val cv = new CountVectorizer().setInputCol("tokens").setOutputCol("features").setVocabSize(vocabN).setMinTF(minTF)
 
-  var cv_model: Option[org.apache.spark.ml.feature.CountVectorizerModel] = None
+  /**
+   * The word count vectorizer model
+   *
+   * This will serialize.
+   */
+  var cv_model: Option[CountVectorizerModel] = None
 
   /**
    * The number of tokens to process from the text.
@@ -158,10 +185,10 @@ class UserLDA extends Serializable {
    *
    * These will have a column of topic scores, from which one can deduce which message falls within which topic.
    *
-   * These are the topic
+   * These are the topics. They cannot be serialized.
    * @group Output
    */
-  var transformed: Option[DataFrame] = None
+  @transient var transformed: Option[DataFrame] = None
 
   /**
    * The number of iterations.
@@ -186,11 +213,12 @@ class UserLDA extends Serializable {
    */
   var bounds = ( 0.0, 0.0 )
 
-
   /**
    * The LDA model.
    *
    * This the model used for topic fitting. It can be stored to disk and re-used to transform new messages.
+   *
+   * This can be serialized.
    *
    * @group Output
    */
@@ -199,7 +227,9 @@ class UserLDA extends Serializable {
   /**
    * Applies LDA for topic-modelling.
    *
-   * This produces an RDD that only has as many rows as there are topics, so it can be converted to a list.
+   * It sets [[model0]] [[bounds]] and [[transformed]]
+   *
+   * This produces an RDD that only has as many rows as there are topics, so it has been converted to a list.
    */
   def pipeline2(vdf0: DataFrame): List[Scores0] = {
     val lda = new LDA().setK(topicsN).setMaxIter(itersN)
@@ -219,12 +249,7 @@ class UserLDA extends Serializable {
   /**
    * Topic and Vocabulary scores
    *
-   * In the Scala REPL, it is possible to use Scala implicits to convert.
-   * It is proving difficult to do this.
-   * df2 = Some(df1.as[Table1](arg0)
-   *
-   * @param df1
-   * @param spark
+   * @param byTopic the output of [[pipeline2]]
    * @return
    */
   def pipeline3(byTopic: List[Scores0]) : Option[ List[List[Scores1]] ] = {
@@ -247,7 +272,14 @@ class UserLDA extends Serializable {
     sum
   }
 
+  /**
+   * Count the messages that have had topics assigned.
+   *
+   * @return those records in (transformed) that are non-zero for one topic.
+   */
   def quality0() : Array[Double] = {
+    if (transformed.isEmpty) return Array[Double]();
+
     val tr0 = transformed.get.select("topicDistribution").collect()
     val tr1 = tr0.map(_(0)).map(_.asInstanceOf[org.apache.spark.ml.linalg.DenseVector].toArray)
     tr1.map(x => adSum(x) ).filter(_ > 0)
@@ -277,6 +309,14 @@ class UserLDA extends Serializable {
         y.map(x => logger.info(x.word + " :: " + x.score));
       }
     }
+  }
+
+  @throws[IOException]
+  @throws[ClassNotFoundException]
+  private def readObject(in: ObjectInputStream): Unit = {
+    in.defaultReadObject
+    // transformed is transient
+    transformed = None; stage0 = None
   }
 
 }

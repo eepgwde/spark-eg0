@@ -1,10 +1,10 @@
 <!-- weaves : logging for test -->
 
 <configuration>
-    <logger name="org.apache.spark" level="OFF" additivity="false">
+    <logger name="org.apache.spark" level="WARN" additivity="false">
     </logger>
 
-    <logger name="org.apache.hadoop" level="OFF" additivity="false">
+    <logger name="org.apache.hadoop" level="WARN" additivity="false">
     </logger>
 
     <logger name="org.sparkproject.jetty" level="OFF" additivity="false">

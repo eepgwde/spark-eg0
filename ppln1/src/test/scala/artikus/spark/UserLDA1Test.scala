@@ -1,28 +1,25 @@
 package artikus.spark
+
 /** This is the Scaladoc for the package. */
 
 import com.typesafe.scalalogging.Logger
-import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.{DataFrame, Encoder, Encoders, Row, SparkSession}
+import org.apache.spark.sql.DataFrame
 import org.scalatest.funspec.AnyFunSpec
 
-import java.io.{FileInputStream, FileOutputStream, ObjectInputStream, ObjectOutputStream}
-import java.nio.file.FileSystems
 import scala.collection.mutable
 
 /**
- * Prototyping test.
+ * Extra stages.
  *
- * This checks the whole pipeline.
+ * Archive to disk.
  */
-class UserLDATest extends AnyFunSpec with org.scalatest.Inspectors
+class UserLDA1Test extends AnyFunSpec with org.scalatest.Inspectors
     with org.scalatest.matchers.should.Matchers {
 
   val l0: Logger = Logger("UserLDATest")
   val logger = l0
 
   val modeller = new UserLDA()
-  val path = FileSystems.getDefault.getPath("target", "modeller.ser")
 
   val statTest = false
 
@@ -34,9 +31,7 @@ class UserLDATest extends AnyFunSpec with org.scalatest.Inspectors
   var words: Option[List[List[Scores1]]] = None
   var desc: Option[List[mutable.WrappedArray[(String, Double)]]] = None
 
-  var modeller1: Option[UserLDA] = None
-
-  describe ("LDA processing") {
+  describe ("Archive") {
     it("properties") {
       val props = Session0.props()
       l0.info(props.toString())
@@ -69,9 +64,6 @@ class UserLDATest extends AnyFunSpec with org.scalatest.Inspectors
 
       df1 = Some(modeller.pipeline0(df0))
       df1 should not be (None)
-    }
-    it("archive0 - write a table") {
-      modeller.archive0()
     }
     it("pipeline1 - count vectorization") {
       // set some parameters here
@@ -112,39 +104,6 @@ class UserLDATest extends AnyFunSpec with org.scalatest.Inspectors
       } else {
         assert(!statTest)
       }
-    }
-    it("serialization - out") {
-      logger.info(s"modeller: out: ${modeller.hashCode()}")
-      val oos = new ObjectOutputStream(new FileOutputStream(path.toFile))
-      oos.writeObject(modeller)
-      oos.close
-    }
-    it("serialization - in") {
-      // this needs some help to resolve classes
-      // https://stackoverflow.com/questions/16386252/scala-deserialization-class-not-found
-      val ois = new ObjectInputStream(new FileInputStream(path.toFile)) {
-        override def resolveClass(desc: java.io.ObjectStreamClass): Class[_] = {
-          try {
-            Class.forName(desc.getName, false, getClass.getClassLoader)
-          }
-          catch {
-            case ex: ClassNotFoundException => super.resolveClass(desc)
-          }
-        }
-      }
-      modeller1 = Some(ois.readObject.asInstanceOf[UserLDA])
-      ois.close
-    }
-    it("use - serialized") {
-      modeller1 should not be (None)
-
-      logger.info(s"modeller1: in: ${modeller1.get.hashCode()}")
-      val tr0 = modeller1.get.quality0()
-      logger.info(s"modeller1: quality: ${tr0}")
-
-      logger.info(s"modeller1: log likelihood: ${modeller1.get.bounds._1}")
-
-      modeller1.get.display()
     }
   }
 }
