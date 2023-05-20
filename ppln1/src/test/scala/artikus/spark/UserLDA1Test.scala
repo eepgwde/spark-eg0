@@ -16,8 +16,7 @@ import scala.collection.mutable
 class UserLDA1Test extends AnyFunSpec with org.scalatest.Inspectors
     with org.scalatest.matchers.should.Matchers {
 
-  val l0: Logger = Logger("UserLDATest")
-  val logger = l0
+  val logger: Logger = Logger("UserLDATest")
 
   val modeller = new UserLDA()
 
@@ -32,38 +31,9 @@ class UserLDA1Test extends AnyFunSpec with org.scalatest.Inspectors
   var desc: Option[List[mutable.WrappedArray[(String, Double)]]] = None
 
   describe ("Archive") {
-    it("properties") {
-      val props = Session0.props()
-      l0.info(props.toString())
-      props should not be null
-      assert(props.size() > 0)
-    }
-    it("configuration") {
-      val conf0 = Session0.configure()
-      conf0 should not be null
-      l0.info(conf0.toDebugString)
-    }
     it("pipeline0 - load and simplify") {
-      val session = Session0.instance
-      session should not be null
-
-      l0.info(session.version)
-
-      val url = "file:///a/l/X-image/cache/data/abcnews-date-text.csv"
-
-      val type0 = "csv"
-      val infer_schema = "true"
-      val first_row_is_header = "true"
-      val delimiter = ","
-
-      val df0 = session.read.format(type0)
-        .option("inferSchema", infer_schema)
-        .option("header", first_row_is_header)
-        .option("sep", delimiter)
-        .load(url)
-
-      df1 = Some(modeller.pipeline0(df0))
-      df1 should not be (None)
+      modeller.archive0(reload=true)
+      modeller.stage0 should not be (None)
     }
     it("pipeline1 - count vectorization") {
       // set some parameters here

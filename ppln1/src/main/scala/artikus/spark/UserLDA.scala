@@ -1,6 +1,5 @@
 package artikus.spark
 
-import com.amazonaws.services.quicksight.model.DataSet
 import com.johnsnowlabs.nlp.DocumentAssembler
 import com.johnsnowlabs.nlp.annotators.Tokenizer
 import com.johnsnowlabs.nlp.annotators.Normalizer
@@ -13,15 +12,93 @@ import org.apache.spark.ml.feature.CountVectorizerModel
 import org.apache.spark.ml.clustering.{LDA, LDAModel}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{DataFrame, Dataset, Encoder, Encoders, Row, SparkSession}
-import org.apache.spark.sql.types._
 import com.typesafe.scalalogging.Logger
 
-import java.io.{IOException, ObjectInputStream}
+import java.io.{FileInputStream, FileNotFoundException, FileOutputStream, IOException, ObjectInputStream, ObjectOutputStream}
 import scala.collection.mutable
+import org.apache.hadoop.fs.{FileStatus, Path}
+
+import java.net.URI
 
 case class Scores0(id: Int, indices: mutable.WrappedArray[Int], scores: mutable.WrappedArray[Double])
 
 case class Scores1(word: String, score: Double)
+
+/**
+ * Allows for archival of the whole object.
+ */
+object UserLDA {
+  val logger: Logger = Logger("UserLDA")
+
+  val basePath = new URI(Session0.hadoop0.get("fs.defaultFS"))
+  val userBase =  new Path(new URI(Session0.hadoop0.get("fs.defaultFS") + "/user/" + Session0.getUsername() ))
+    // s"${basePath}/user/${Session0.getUsername()}"
+
+  def prefix0(path: String) = {
+    var tpath = path
+    if (!tpath.startsWith("/")) tpath = "/" + tpath
+    new Path(tpath)
+  }
+
+  val serialName = "UserLDA.ser"
+
+  def serialize(in0: UserLDA, path: String = serialName) = {
+    logger.info(s"modeller: in0: ${in0.hashCode()}")
+    val p0 = Path.mergePaths(UserLDA.userBase, prefix0(in0.initial0))
+    val p1 = Path.mergePaths(p0, prefix0(path))
+
+    logger.info(s"serialize: ${p1}")
+    val d0 = p1.getParent()
+
+    // try and make the directory
+    try {
+      Session0.fs.mkdirs(d0)
+    } catch {
+      case e0: FileNotFoundException => logger.info("directory not present: " + d0)
+      case _: Throwable => logger.warn(s"serialize: directory may exist")
+    } finally {
+      Session0.logFileStatus(d0)
+    }
+
+    val p2 = Session0.fs.create(p1)
+    val oos = new ObjectOutputStream(p2)
+    oos.writeObject(in0)
+    oos.close
+    Session0.logFileStatus(p1)
+    ()
+  }
+
+  def unserialize(path: Option[Path] = None)  = {
+    var t0: Option[UserLDA] = None
+    var tpath = path
+
+    if (path.isEmpty) {
+      // get the most recent
+      // Get all the directories
+      val g0 = Session0.fs.globStatus(new Path(s"${UserLDA.userBase}/*T*Z"))
+      val gmax = g0.filter(_.isDirectory).map(_.getModificationTime).max
+      logger.info(s"gmax: ${gmax}")
+      val first = g0.filter(_.getModificationTime == gmax)
+      logger.info(s"first: length: ${first.length}; first: ${first.head}; path: ${first.head.getPath}")
+      tpath = Some(Path.mergePaths(first.head.getPath, prefix0(serialName)))
+    }
+    val r0 = Session0.logFileStatus(tpath.get)
+    if (!r0.isEmpty) {
+      val ois = new ObjectInputStream(Session0.fs.open(tpath.get)) {
+        override def resolveClass(desc: java.io.ObjectStreamClass): Class[_] = {
+          try {
+            Class.forName(desc.getName, false, getClass.getClassLoader)
+          }
+          catch {
+            case ex: ClassNotFoundException => super.resolveClass(desc)
+          }
+        }
+      }
+      t0 = Some(ois.readObject.asInstanceOf[UserLDA])
+     }
+    t0
+  }
+}
 
 /**
  * Natural Language Processing pipeline.
@@ -47,7 +124,12 @@ case class Scores1(word: String, score: Double)
  *
  */
 class UserLDA extends Serializable {
-  val logger: Logger = Logger("UserLDA")
+  val logger: Logger = UserLDA.logger
+
+  /**
+   * Unique timestamp and identity for this object.
+   */
+  val initial0 = DateID.initial0
 
   // collates the input.
   val document_assembler = new DocumentAssembler().setInputCol("headline_text").setOutputCol("document").setCleanupMode("shrink")
@@ -94,15 +176,29 @@ class UserLDA extends Serializable {
    *
    * This is for [[pipeline0]] and its output [[stage0]]. It is written to a final table called `stage0`.
    */
-  def archive0() = {
+  def archive0(reload: Boolean = false) {
+    val tname = "stage0"
+
+    if (reload) {
+      val spark = Session0.instance
+      if (!spark.catalog.tableExists(tname))
+        throw new IllegalStateException(s"no database named: ${tname}")
+      val stage1 = spark.sql(s"select * from ${tname}")
+      stage0 = Some(stage1)
+      ()
+    }
+
     if (stage0.isEmpty) ()
 
-    stage0.get.createTempView("tstage0")
+    stage0.get.createTempView(s"t${tname}")
     val spark = stage0.get.sqlContext
 
-    spark.sql("drop table if exists stage0")
-    spark.sql("create table stage0 AS select * from tstage0")
-    spark.sql("drop table if exists tstage0")
+    spark.sql(s"drop table if exists ${tname}")
+    spark.sql(s"create table ${tname} AS select * from t${tname}")
+    spark.sql(s"drop table if exists t${tname}")
+
+    logger.info(s"table-names: ${spark.tableNames()}")
+    ()
   }
 
   /**

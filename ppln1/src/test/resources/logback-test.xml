@@ -4,6 +4,9 @@
     <logger name="org.apache.spark" level="WARN" additivity="false">
     </logger>
 
+    <logger name="com.zaxxer.hikari" level="OFF" additivity="false">
+    </logger>
+
     <logger name="org.apache.hadoop" level="WARN" additivity="false">
     </logger>
 
@@ -11,6 +14,9 @@
     </logger>
 
     <logger name="io.netty" level="OFF" additivity="false">
+    </logger>
+
+    <logger name="artikus.spark" level="DEBUG" additivity="true">
     </logger>
 
     <appender name="console" class="ch.qos.logback.core.ConsoleAppender">
@@ -25,8 +31,10 @@
         </encoder>
     </appender>
 
+    <timestamp key="bySecond" datePattern="yyyyMMdd'T'HHmmss"/>
+
     <appender name="file" class="ch.qos.logback.core.FileAppender">
-        <file>weaves.log</file>
+        <file>weaves-${bySecond}.log</file>
         <append>false</append>
         <encoder>
 	    <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} -%kvp- %msg%n</pattern>

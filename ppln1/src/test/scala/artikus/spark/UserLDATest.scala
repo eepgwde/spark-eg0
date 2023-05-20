@@ -18,8 +18,7 @@ import scala.collection.mutable
 class UserLDATest extends AnyFunSpec with org.scalatest.Inspectors
     with org.scalatest.matchers.should.Matchers {
 
-  val l0: Logger = Logger("UserLDATest")
-  val logger = l0
+  val logger: Logger = Logger("UserLDATest")
 
   val modeller = new UserLDA()
   val path = FileSystems.getDefault.getPath("target", "modeller.ser")
@@ -39,20 +38,20 @@ class UserLDATest extends AnyFunSpec with org.scalatest.Inspectors
   describe ("LDA processing") {
     it("properties") {
       val props = Session0.props()
-      l0.info(props.toString())
+      logger.info(props.toString())
       props should not be null
       assert(props.size() > 0)
     }
     it("configuration") {
       val conf0 = Session0.configure()
       conf0 should not be null
-      l0.info(conf0.toDebugString)
+      logger.info(conf0.toDebugString)
     }
     it("pipeline0 - load and simplify") {
       val session = Session0.instance
       session should not be null
 
-      l0.info(session.version)
+      logger.info(session.version)
 
       val url = "file:///a/l/X-image/cache/data/abcnews-date-text.csv"
 
@@ -145,6 +144,17 @@ class UserLDATest extends AnyFunSpec with org.scalatest.Inspectors
       logger.info(s"modeller1: log likelihood: ${modeller1.get.bounds._1}")
 
       modeller1.get.display()
+    }
+    it("use - out - serialized2") {
+      modeller1 should not be (None)
+      UserLDA.serialize(modeller)
+    }
+    it("use - in - serialized2") {
+      modeller1 should not be (None)
+      UserLDA.serialize(modeller)
+    }
+    it("close") {
+      Session0.instance.close()
     }
   }
 }

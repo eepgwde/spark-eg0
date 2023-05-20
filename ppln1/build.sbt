@@ -37,6 +37,7 @@ javacOptions  ++= Seq(
 
 libraryDependencies ++= Seq(
   "com.johnsnowlabs.nlp" %% "spark-nlp" % "4.4.2",
+  "org.postgresql" % "postgresql" % "42.2.15",
 
   "org.apache.spark" %% "spark-core" % "3.4.0",
   "org.apache.spark" %% "spark-sql" % "3.4.0" % "provided",
@@ -54,3 +55,4 @@ libraryDependencies ++= Seq(
 Compile / doc / scalacOptions ++= Seq("-groups", "-implicits")
 
 Compile / doc / javacOptions ++= Seq("-notimestamp", "-linksource")
+
