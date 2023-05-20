@@ -47,7 +47,7 @@ class UserLDA1Test extends AnyFunSpec with org.scalatest.Inspectors
       }
 
       df1 should not be (None)
-      df2 = Some(modeller.pipeline1(df1.get))
+      df2 = modeller.pipeline1(df1.get)
       df2 should not be (None)
     }
     it("pipeline2 - LDA fit - topics with words then scores") {

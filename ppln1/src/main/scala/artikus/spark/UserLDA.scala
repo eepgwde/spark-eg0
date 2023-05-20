@@ -17,6 +17,8 @@ import com.typesafe.scalalogging.Logger
 import java.io.{FileInputStream, FileNotFoundException, FileOutputStream, IOException, ObjectInputStream, ObjectOutputStream}
 import scala.collection.mutable
 import org.apache.hadoop.fs.{FileStatus, Path}
+import org.apache.spark.sql.functions.col
+import org.apache.spark.sql.types.{ArrayType, ByteType, DoubleType, IntegerType, StringType, StructType}
 
 import java.net.URI
 
@@ -198,8 +200,12 @@ class UserLDA extends Serializable {
 
   /**
    * The word count vectorizer pipeline component.
+   *
    */
-  val cv = new CountVectorizer().setInputCol("tokens").setOutputCol("features").setVocabSize(vocabN).setMinTF(minTF)
+  def countVectorizer() = {
+    val cv = new CountVectorizer().setInputCol("tokens").setOutputCol("features").setVocabSize(vocabN).setMinTF(minTF)
+    cv
+  }
 
   /**
    * The word count vectorizer model
@@ -223,21 +229,67 @@ class UserLDA extends Serializable {
    */
   var vocab: Option[Array[String]] = None
 
+  /*
+  root
+   |-- publish_date: integer (nullable = true)
+   |-- tokens: array (nullable = true)
+   |    |-- element: string (containsNull = true)
+   |-- features: struct (nullable = true)
+   |    |-- type: byte (nullable = true)
+   |    |-- size: integer (nullable = true)
+   |    |-- indices: array (nullable = true)
+   |    |    |-- element: integer (containsNull = true)
+   |    |-- values: array (nullable = true)
+   |    |    |-- element: double (containsNull = true)
+   */
+
+  val featuresSchema = new StructType()
+    .add("type", ByteType, false)
+    .add("size", IntegerType, false)
+    .add("indices", ArrayType(IntegerType), true)
+    .add("values", ArrayType(DoubleType), true)
+
+
+  val recordSchema = new StructType()
+    .add("publish_date", IntegerType, false)
+    .add("tokens", ArrayType(StringType), false)
+    .add("features", featuresSchema, false)
+
+
   /**
    * Count vectorization of the tokens.
    *
-   * @param df0 just the tokens from
+   * This can produce useless results if all the counts are null.
+   *
+   * @param df0 just the tokens from pipeline0
    * @return
    */
-  def pipeline1(df0: DataFrame): DataFrame = {
+  def pipeline1(df0: DataFrame): Option[DataFrame] = {
     // vectorized tokens
-    val df1 = df0.select("publish_date","tokens").limit(tokensN)
-    val cv_model = cv.fit(df1)
-    vocab = Some(cv_model.vocabulary)
-    val df2 = cv_model.transform(df1)
-    stage1 = Some(df2)
-    df2
+    val cv = countVectorizer()
+
+    val df1 = if (tokensN > 0) df0.select("publish_date","tokens").limit(tokensN)
+    else df0.select("publish_date","tokens")
+
+    stage1 = None
+    vocab = None
+    try {
+      val cvModel = cv.fit(df1)
+      val df2 = cvModel.transform(df1)
+      vdf1 = Some(df2)
+      val chk0 = df2
+        .filter(org.apache.spark.sql.functions.size(col("features.indices")) > 0)
+        .collect().size
+      stage1 = if (chk0 > 0) Some(df2) else None
+      vocab = Some(cvModel.vocabulary)
+    } catch {
+      case e0: Throwable => logger.debug(s"pipeline1: failure: ${e0.getStackTrace}")
+    }
+
+    stage1
   }
+
+  @transient var vdf1: Option[DataFrame] = None
 
   @transient var stage1: Option[DataFrame] = None
 
@@ -337,9 +389,11 @@ class UserLDA extends Serializable {
    *
    * This is for [[pipeline0]] and its output [[stage0]]. It is written to a final table called `stage0`.
    */
-  def archiver(df0: DataFrame, tname: String, reload: Boolean = false) {
-    val aname = s"${tname}_${initial0}"
+  def archiver(df1: Option[DataFrame], tname: String, reload: Boolean = false) {
+    if (df1.isEmpty) throw new IllegalStateException(s"data frame is empty for: ${tname}")
+    val df0 = df1.get
 
+    val aname = s"${tname}_${initial0}"
     val spark = df0.sqlContext
 
     // backup to one tagged with initial0
@@ -357,11 +411,11 @@ class UserLDA extends Serializable {
     ()
   }
 
-  def archive0() = archiver(stage0.get, "stage0")
+  def archive0() = archiver(stage0, "stage0")
 
-  def archive1() = archiver(stage1.get, "stage1")
+  def archive1() = archiver(stage1, "stage1")
 
-  def archive2() = archiver(transformed.get, "transformed")
+  def archive2() = archiver(transformed, "transformed")
 
 
   // Fast sum for an array.

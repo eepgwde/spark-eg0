@@ -4,6 +4,7 @@ package artikus.spark
 
 import com.typesafe.scalalogging.Logger
 import org.apache.spark.sql.DataFrame
+import org.apache.spark.sql.functions.{size,col}
 import org.scalatest.funspec.AnyFunSpec
 
 /**
@@ -17,10 +18,10 @@ class Stage1Test extends AnyFunSpec with org.scalatest.Inspectors
   val modeller = new UserLDA()
   var df1: Option[DataFrame] = None
 
-  val isStats = false
+  val isStats = true
 
   describe("LDA processing") {
-    it("pipeline1 - load stage0") {
+    it("load stage0") {
       val session = Session0.instance
       session should not be null
 
@@ -30,17 +31,34 @@ class Stage1Test extends AnyFunSpec with org.scalatest.Inspectors
       assert(Session0.instance.catalog.tableExists("stage0"))
       modeller.stage0 = Some(Session0.instance.sql("select * from stage0"))
     }
-    it("archive0 - run pipeline1") {
+    it("pipeline1") {
       modeller.stage0 should not be (None)
 
-      modeller.tokensN = if (isStats) 100 else 5000
+      if (isStats) {
+        modeller.tokensN = -1
+        modeller.vocabN = 1000
+        modeller.minTF = 0.05
+      }
 
-      df1 = Some(modeller.pipeline1(modeller.stage0.get))
+      df1 = modeller.pipeline1(modeller.stage0.get)
+
+      val vdf1 = modeller.vdf1.get
+
+      vdf1.printSchema()
+      vdf1.show(truncate=false)
+
+      // this test fails if any of the data is null.
+      val chk0 = vdf1
+        .filter( org.apache.spark.sql.functions.col("features.indices"))
+        .collect().size
+      logger.info(s"pipeline1: chk0: ${chk0}")
+      assert(0 > 1)
+
       df1 should not be (None)
 
       modeller.stage1 should not be (None)
     }
-    it("archive0 - write the stage1 table to Hive") {
+    it("archive1") {
       modeller.archive1()
     }
     it("close") {
