@@ -2,7 +2,6 @@ package artikus.spark
 /** This is the Scaladoc for the package. */
 
 import com.typesafe.scalalogging.Logger
-import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{DataFrame, Encoder, Encoders, Row, SparkSession}
 import org.scalatest.funspec.AnyFunSpec
 
@@ -24,6 +23,7 @@ class UserLDATest extends AnyFunSpec with org.scalatest.Inspectors
   val path = FileSystems.getDefault.getPath("target", "modeller.ser")
 
   val statTest = false
+  val isArchiving = false
 
   // case class Table1(id: Int, indices: mutable.WrappedArray[Int], scores: mutable.WrappedArray[Double])
 
@@ -70,7 +70,7 @@ class UserLDATest extends AnyFunSpec with org.scalatest.Inspectors
       df1 should not be (None)
     }
     it("archive0 - write a table") {
-      modeller.archive0()
+      if (isArchiving) modeller.archive0()
     }
     it("pipeline1 - count vectorization") {
       // set some parameters here

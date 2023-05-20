@@ -164,42 +164,12 @@ class UserLDA extends Serializable {
    */
   def pipeline0(df0: DataFrame): DataFrame = {
     val nlp_model = nlp_pipeline.fit(df0)
-    val stage1 = nlp_model.transform(df0)
-    stage0 = Some(stage1)
-    stage1
+    val df1 = nlp_model.transform(df0)
+    stage0 = Some(df1)
+    df1
   }
 
   @transient var stage0: Option[DataFrame] = None
-
-  /**
-   * Write the output of a pipeline to Hive.
-   *
-   * This is for [[pipeline0]] and its output [[stage0]]. It is written to a final table called `stage0`.
-   */
-  def archive0(reload: Boolean = false) {
-    val tname = "stage0"
-
-    if (reload) {
-      val spark = Session0.instance
-      if (!spark.catalog.tableExists(tname))
-        throw new IllegalStateException(s"no database named: ${tname}")
-      val stage1 = spark.sql(s"select * from ${tname}")
-      stage0 = Some(stage1)
-      ()
-    }
-
-    if (stage0.isEmpty) ()
-
-    stage0.get.createTempView(s"t${tname}")
-    val spark = stage0.get.sqlContext
-
-    spark.sql(s"drop table if exists ${tname}")
-    spark.sql(s"create table ${tname} AS select * from t${tname}")
-    spark.sql(s"drop table if exists t${tname}")
-
-    logger.info(s"table-names: ${spark.tableNames()}")
-    ()
-  }
 
   /**
    * The vocabulary size.
@@ -264,8 +234,12 @@ class UserLDA extends Serializable {
     val df1 = df0.select("publish_date","tokens").limit(tokensN)
     val cv_model = cv.fit(df1)
     vocab = Some(cv_model.vocabulary)
-    cv_model.transform(df1)
+    val df2 = cv_model.transform(df1)
+    stage1 = Some(df2)
+    df2
   }
+
+  @transient var stage1: Option[DataFrame] = None
 
   /**
    * The number of topics cluster around
@@ -275,16 +249,6 @@ class UserLDA extends Serializable {
    * @group Model
    */
   var topicsN = 5
-
-  /**
-   * The transformed messages.
-   *
-   * These will have a column of topic scores, from which one can deduce which message falls within which topic.
-   *
-   * These are the topics. They cannot be serialized.
-   * @group Output
-   */
-  @transient var transformed: Option[DataFrame] = None
 
   /**
    * The number of iterations.
@@ -339,6 +303,17 @@ class UserLDA extends Serializable {
       x.getAs[mutable.WrappedArray[Double]](2)) )
   }
 
+  /**
+   * The transformed messages.
+   *
+   * These will have a column of topic scores, from which one can deduce which message falls within which topic.
+   *
+   * These are the topics. They cannot be serialized.
+   *
+   * @group Output
+   */
+  @transient var transformed: Option[DataFrame] = None
+
   // var ds1 : Option[Serializable] = None
   var desc : Option[List[List[Scores1]]] = None
 
@@ -356,6 +331,38 @@ class UserLDA extends Serializable {
     desc = Some(desc1)
     desc
   }
+
+  /**
+   * Write the output of a pipeline to Hive.
+   *
+   * This is for [[pipeline0]] and its output [[stage0]]. It is written to a final table called `stage0`.
+   */
+  def archiver(df0: DataFrame, tname: String, reload: Boolean = false) {
+    val aname = s"${tname}_${initial0}"
+
+    val spark = df0.sqlContext
+
+    // backup to one tagged with initial0
+    spark.sql(s"drop table if exists ${aname}")
+    if (Session0.instance.catalog.tableExists(tname)) {
+      spark.sql(s"create table ${aname} as select * from ${tname}")
+      spark.sql(s"drop table if exists ${tname}")
+    }
+
+    df0.createTempView(s"t${aname}")
+    spark.sql(s"create table ${tname} AS select * from t${aname}")
+    spark.sql(s"drop table if exists t${aname}")
+
+    logger.info(s"table-names: ${spark.tableNames()}")
+    ()
+  }
+
+  def archive0() = archiver(stage0.get, "stage0")
+
+  def archive1() = archiver(stage1.get, "stage1")
+
+  def archive2() = archiver(transformed.get, "transformed")
+
 
   // Fast sum for an array.
   def adSum(ad: Array[Double]) = {

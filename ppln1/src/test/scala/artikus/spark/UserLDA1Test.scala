@@ -32,7 +32,7 @@ class UserLDA1Test extends AnyFunSpec with org.scalatest.Inspectors
 
   describe ("Archive") {
     it("pipeline0 - load and simplify") {
-      modeller.archive0(reload=true)
+      modeller.archive0()
       modeller.stage0 should not be (None)
     }
     it("pipeline1 - count vectorization") {
