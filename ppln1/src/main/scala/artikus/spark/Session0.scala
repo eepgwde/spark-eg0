@@ -113,7 +113,9 @@ object Session0 {
       case e0: FileNotFoundException => logger.info("directory not present: " + p0);
       case _: Throwable => throw new IllegalStateException(s"could not create directory: ${p0}")
     }
-    logger.info(s"directory ${p0} isDirectory: ${status0.get.isDirectory}; time: ${status0.get.getModificationTime}")
+    if (!status0.isEmpty)
+      logger.info(s"directory ${p0} isDirectory: ${status0.get.isDirectory}; time: ${status0.get.getModificationTime}")
+    else logger.info(s"file not found: ${p0}")
     status0
   }
 

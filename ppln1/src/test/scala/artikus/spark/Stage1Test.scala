@@ -50,13 +50,12 @@ class Stage1Test extends AnyFunSpec with org.scalatest.Inspectors
       df1 = modeller.pipeline1(modeller.stage0.get)
       df1 should not be (None)
 
-      df1.get.printSchema()
-      // df1.get.show(truncate=false)
-
       modeller.stage1 should not be (None)
+
     }
     it("archive1") {
       modeller.archive1()
+      UserLDA.serialize(modeller)
     }
     it("close") {
       Session0.instance.close()

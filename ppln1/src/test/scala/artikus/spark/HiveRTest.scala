@@ -56,23 +56,48 @@ class HiveRTest extends AnyFunSpec with org.scalatest.Inspectors
 
   }
 
-  describe ("Hive Test") {
+  describe("Hive Test") {
     it("check tables") {
       val spark = Session0.instance
-
       logger.info(s"table-names: ${spark.sqlContext.tableNames()}")
     }
     it("read from Hive") {
       val spark = Session0.instance
 
-      val df0 = spark.sql("select * from xusers")
+      val df0 = spark.sql("select * from finalTable")
       df1 = Some(df0)
     }
     it("display table") {
       df1.get.show()
     }
-    it("close") {
-      Session0.instance.close()
+  }
+
+  var mr0 : Option[String] = None
+
+  describe("Hive and Serialized names") {
+    it("List tables") {
+      val spark = Session0.instance
+
+      val tname = "stage1"
+      val tlist = spark.catalog.listTables().select("name")
+        .collect().map(_.getString(0)).filter(_.startsWith(s"${tname}_"))
+
+      mr0 = Some(tlist.sorted.reverse.head)
+
+      logger.info("stage1: mr0: ${mr0}")
+    }
+    it("List serializations") {
+      val spark = Session0.instance
+    }
+    it("display table") {
+      df1.get.show()
     }
   }
+
+  describe("Spark close") {
+    it("close") {
+        Session0.instance.close()
+    }
+  }
+
 }

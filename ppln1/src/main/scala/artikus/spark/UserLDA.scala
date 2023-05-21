@@ -48,10 +48,15 @@ object UserLDA {
 
   val serialName = "UserLDA.ser"
 
+  def mkPrefix(serialTag: String, path: String = serialName) = {
+    val p0 = Path.mergePaths(UserLDA.userBase, prefix0(serialTag))
+    val p1 = Path.mergePaths(p0, prefix0(path))
+    p1
+  }
+
   def serialize(in0: UserLDA, path: String = serialName) = {
     logger.info(s"modeller: in0: ${in0.hashCode()}")
-    val p0 = Path.mergePaths(UserLDA.userBase, prefix0(in0.initial0))
-    val p1 = Path.mergePaths(p0, prefix0(path))
+    val p1 = mkPrefix(in0.initial0, path)
 
     logger.info(s"serialize: ${p1}")
     val d0 = p1.getParent()
@@ -364,12 +369,16 @@ class UserLDA extends Serializable {
     val model = lda.fit(vdf0)
     model0 = Some(model)
     bounds = ( model.logLikelihood(vdf0), model.logPerplexity(vdf0) )
-    val topics = model.describeTopics(topicsN)
+    val topics0 = model.describeTopics(topicsN)
     transformed = Option(model.transform(vdf0))
-    topics.rdd.collect().toList.map(x => new Scores0(x.getInt(0),
+    val t0 = topics0.rdd.collect().toList.map(x => new Scores0(x.getInt(0),
       x.getAs[mutable.WrappedArray[Int]](1),
       x.getAs[mutable.WrappedArray[Double]](2)) )
+    topics = Some(t0)
+    t0
   }
+
+  @transient var topics: Option[List[Scores0]] = None
 
   /**
    * The transformed messages.
@@ -429,7 +438,26 @@ class UserLDA extends Serializable {
 
   def archive0() = archiver(stage0, "stage0")
 
-  def archive1() = archiver(stage1, "stage1")
+
+  def stage1Name = "stage1"
+  /**
+   * The stage1 dataframe uses an array in features.
+   */
+  def archive1() = {
+    var df0 = stage1.get
+
+    df0 = df0.withColumn("f1", vector_to_array(col("features")))
+    df0 = df0.drop("features")
+
+    archiver(Some(df0), stage1Name)
+  }
+
+  def unarchive1(df1: Option[DataFrame] = None, tname: String = stage1Name) = {
+    var df0 = if (!df1.isEmpty) df1.get else Session0.instance.sql(s"select * from ${tname}")
+    df0 = df0.withColumn("features", array_to_vector(col("f1")))
+    df0 = df0.drop("f1")
+    stage1 = Some(df0)
+  }
 
   def archive2() = archiver(transformed, "transformed")
 

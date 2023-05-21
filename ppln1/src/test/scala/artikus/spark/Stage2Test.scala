@@ -18,14 +18,13 @@ class Stage2Test extends AnyFunSpec with org.scalatest.Inspectors
   val logger: Logger = Logger("Stage2Test")
   val modeller = new UserLDA()
   var df2: Option[DataFrame] = None
-  var topics: List[Scores0] = List[Scores0]()
   var words: Option[List[List[Scores1]]] = None
   var desc: Option[List[mutable.WrappedArray[(String, Double)]]] = None
 
   val isStats = false
 
   describe("LDA processing") {
-    it("load stage1") {
+    it("unarchive1 - load stage1") {
       val session = Session0.instance
       session should not be null
 
@@ -33,7 +32,7 @@ class Stage2Test extends AnyFunSpec with org.scalatest.Inspectors
 
       modeller.stage1 = None
       assert(Session0.instance.catalog.tableExists("stage1"))
-      modeller.stage1 = Some(Session0.instance.sql("select * from stage1"))
+      modeller.unarchive1()
     }
     it("pipeline2 - LDA fit - topics with words then scores") {
       modeller.stage1 should not be (None)
@@ -43,8 +42,11 @@ class Stage2Test extends AnyFunSpec with org.scalatest.Inspectors
         modeller.topicsN = 10
       }
 
-      topics = modeller.pipeline2(modeller.stage1.get)
+      modeller.pipeline2(modeller.stage1.get)
 
+      modeller.topics should not be (None)
+    }
+    it("archive2 - write down transformed") {
       modeller.archive2()
     }
     it("pipeline3 - topics") {
@@ -53,7 +55,9 @@ class Stage2Test extends AnyFunSpec with org.scalatest.Inspectors
         modeller.minTF = 3.0
       }
 
-      words = modeller.pipeline3(topics)
+      modeller.vocab should not be (None)
+
+      words = modeller.pipeline3(modeller.topics.get)
     }
     it("display - quality") {
       words should not be (None)
