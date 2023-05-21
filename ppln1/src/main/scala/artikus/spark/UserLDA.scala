@@ -1,30 +1,20 @@
 package artikus.spark
 
-import org.apache.spark.ml.linalg.{Vector, Vectors}
-import org.apache.spark.ml.functions.{array_to_vector, vector_to_array}
-import com.johnsnowlabs.nlp.DocumentAssembler
-import com.johnsnowlabs.nlp.annotators.Tokenizer
-import com.johnsnowlabs.nlp.annotators.Normalizer
-import com.johnsnowlabs.nlp.annotators.StopWordsCleaner
-import com.johnsnowlabs.nlp.annotators.Stemmer
-import com.johnsnowlabs.nlp.Finisher
-import org.apache.spark.ml.Pipeline
-import org.apache.spark.ml.feature.CountVectorizer
-import org.apache.spark.ml.feature.CountVectorizerModel
-import org.apache.spark.ml.clustering.{LDA, LDAModel}
-import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.{DataFrame, Dataset, Encoder, Encoders, Row, SparkSession}
+import com.johnsnowlabs.nlp.{DocumentAssembler, Finisher}
+import com.johnsnowlabs.nlp.annotators.{Normalizer, Stemmer, StopWordsCleaner, Tokenizer}
 import com.typesafe.scalalogging.Logger
-
-import java.io.{FileInputStream, FileNotFoundException, FileOutputStream, IOException, ObjectInputStream, ObjectOutputStream}
-import scala.collection.mutable
-import org.apache.hadoop.fs.{FileStatus, Path}
+import org.apache.hadoop.fs.Path
+import org.apache.spark.ml.Pipeline
+import org.apache.spark.ml.clustering.{LDA, LDAModel}
+import org.apache.spark.ml.feature.{CountVectorizer, CountVectorizerModel}
+import org.apache.spark.ml.functions.{array_to_vector, vector_to_array}
+import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.functions.{array_max, col, sum}
-import org.apache.spark.sql.types.{ArrayType, ByteType, DoubleType, IntegerType, StringType, StructType}
+import org.apache.spark.sql.types._
 
+import java.io.{FileNotFoundException, IOException, ObjectInputStream, ObjectOutputStream}
 import java.net.URI
-import scala.math.Ordered.orderingToOrdered
-import scala.math.Ordering.Implicits.infixOrderingOps
+import scala.collection.mutable
 
 case class Scores0(id: Int, indices: mutable.WrappedArray[Int], scores: mutable.WrappedArray[Double])
 
@@ -37,22 +27,9 @@ object UserLDA {
   val logger: Logger = Logger("UserLDA")
 
   val basePath = new URI(Session0.hadoop0.get("fs.defaultFS"))
-  val userBase =  new Path(new URI(Session0.hadoop0.get("fs.defaultFS") + "/user/" + Session0.getUsername() ))
-    // s"${basePath}/user/${Session0.getUsername()}"
-
-  def prefix0(path: String) = {
-    var tpath = path
-    if (!tpath.startsWith("/")) tpath = "/" + tpath
-    new Path(tpath)
-  }
-
+  val userBase = new Path(new URI(Session0.hadoop0.get("fs.defaultFS") + "/user/" + Session0.getUsername()))
+  // s"${basePath}/user/${Session0.getUsername()}"
   val serialName = "UserLDA.ser"
-
-  def mkPrefix(serialTag: String, path: String = serialName) = {
-    val p0 = Path.mergePaths(UserLDA.userBase, prefix0(serialTag))
-    val p1 = Path.mergePaths(p0, prefix0(path))
-    p1
-  }
 
   def serialize(in0: UserLDA, path: String = serialName) = {
     logger.info(s"modeller: in0: ${in0.hashCode()}")
@@ -79,7 +56,19 @@ object UserLDA {
     ()
   }
 
-  def unserialize(path: Option[Path] = None)  = {
+  def mkPrefix(serialTag: String, path: String = serialName) = {
+    val p0 = Path.mergePaths(UserLDA.userBase, prefix0(serialTag))
+    val p1 = Path.mergePaths(p0, prefix0(path))
+    p1
+  }
+
+  def prefix0(path: String) = {
+    var tpath = path
+    if (!tpath.startsWith("/")) tpath = "/" + tpath
+    new Path(tpath)
+  }
+
+  def unserialize(path: Option[Path] = None) = {
     var t0: Option[UserLDA] = None
     var tpath = path
 
@@ -106,7 +95,7 @@ object UserLDA {
         }
       }
       t0 = Some(ois.readObject.asInstanceOf[UserLDA])
-     }
+    }
     t0
   }
 }
@@ -164,33 +153,25 @@ class UserLDA extends Serializable {
 
   val stages = Array(document_assembler, tokenizer, normalizer, stopwords_cleaner, stemmer, finisher)
   val nlp_pipeline = new Pipeline().setStages(stages)
-
-  /**
-   * Transform the text to produce tokens.
-   *
-   * This is the text pre-processing process. All of the intermediate stages are contained within it.
-   *
-   * @param df0 input text, loaded from somewhere, has a column called headline_text
-   * @return a table containing a column for each transformation.
-   */
-  def pipeline0(df0: DataFrame): DataFrame = {
-    val nlp_model = nlp_pipeline.fit(df0)
-    val df1 = nlp_model.transform(df0)
-    stage0 = Some(df1)
-    df1
-  }
-
+  val featuresSchema = new StructType()
+    .add("type", ByteType, false)
+    .add("size", IntegerType, false)
+    .add("indices", ArrayType(IntegerType), true)
+    .add("values", ArrayType(DoubleType), true)
+  val recordSchema = new StructType()
+    .add("publish_date", IntegerType, false)
+    .add("tokens", ArrayType(StringType), false)
+    .add("features", featuresSchema, false)
   @transient var stage0: Option[DataFrame] = None
-
   /**
    * The vocabulary size.
    *
    * Constructor parameter for [[cv]]
    * Used by the [[org.apache.spark.ml.feature.CountVectorizer]]
+   *
    * @group Input
    */
   var vocabN: Int = 500
-
   /**
    * Removal of infrequent items.
    *
@@ -206,16 +187,6 @@ class UserLDA extends Serializable {
    * @group Input
    */
   var minTF: Double = 3.0
-
-  /**
-   * The word count vectorizer pipeline component.
-   *
-   */
-  def countVectorizer() = {
-    val cv = new CountVectorizer().setInputCol("tokens").setOutputCol("features").setVocabSize(vocabN).setMinTF(minTF)
-    cv
-  }
-
   /**
    * The word count vectorizer model
    *
@@ -251,30 +222,73 @@ class UserLDA extends Serializable {
    |    |-- values: array (nullable = true)
    |    |    |-- element: double (containsNull = true)
    */
-
-  val featuresSchema = new StructType()
-    .add("type", ByteType, false)
-    .add("size", IntegerType, false)
-    .add("indices", ArrayType(IntegerType), true)
-    .add("values", ArrayType(DoubleType), true)
-
-
-  val recordSchema = new StructType()
-    .add("publish_date", IntegerType, false)
-    .add("tokens", ArrayType(StringType), false)
-    .add("features", featuresSchema, false)
+  @transient var stage1: Option[DataFrame] = None
+  /**
+   * The number of topics cluster around
+   *
+   * A low integer, typically 3 or 5.
+   *
+   * @group Model
+   */
+  var topicsN = 5
+  /**
+   * The number of iterations.
+   *
+   * Low value of 100, and can go up to 100000.
+   *
+   * @group Model
+   */
+  var itersN: Int = 10
+  /**
+   * This stores the log likelihood and the log perplexity of the model.
+   *
+   * The log likelihood is usually negative and it should be maximized.
+   * The perplexity is an indicator of how well the topics are clustering.
+   *
+   * `bounds = ( model.logLikelihood(vdf0), model.logPerplexity(vdf0) )`
+   * [log likelihood](https://en.wikipedia.org/wiki/Likelihood_function)
+   * [log perplexity](https://en.wikipedia.org/wiki/Perplexity)
+   *
+   * @group Output
+   */
+  var bounds = (0.0, 0.0)
+  /**
+   * The LDA model.
+   *
+   * This the model used for topic fitting. It can be stored to disk and re-used to transform new messages.
+   *
+   * This can be serialized.
+   *
+   * @group Output
+   */
+  var model0: Option[LDAModel] = None
+  @transient var topics: Option[List[Scores0]] = None
+  /**
+   * The transformed messages.
+   *
+   * These will have a column of topic scores, from which one can deduce which message falls within which topic.
+   *
+   * These are the topics. They cannot be serialized.
+   *
+   * @group Output
+   */
+  @transient var transformed: Option[DataFrame] = None
+  // var ds1 : Option[Serializable] = None
+  var desc: Option[List[List[Scores1]]] = None
 
   /**
-   * Calculates the sum of the maxima of each row of features.
+   * Transform the text to produce tokens.
    *
-   * This should be the sum of the counts, but only the max is implemented.
-   * @param df0
-   * @return sum of the maximum of each of the rows
+   * This is the text pre-processing process. All of the intermediate stages are contained within it.
+   *
+   * @param df0 input text, loaded from somewhere, has a column called headline_text
+   * @return a table containing a column for each transformation.
    */
-  def sumArray(df0: DataFrame) = {
-    val df2 = df0.withColumn("f1", array_max(vector_to_array(col("features"))))
-    val total0 = df2.select(sum(col("f1"))).first.get(0).asInstanceOf[Double]
-    total0
+  def pipeline0(df0: DataFrame): DataFrame = {
+    val nlp_model = nlp_pipeline.fit(df0)
+    val df1 = nlp_model.transform(df0)
+    stage0 = Some(df1)
+    df1
   }
 
   /**
@@ -290,8 +304,8 @@ class UserLDA extends Serializable {
     val cv = countVectorizer()
 
     val df1 = if (tokensN > 0)
-      df0.select("publish_date","tokens").limit(tokensN)
-      else df0.select("publish_date","tokens")
+      df0.select("publish_date", "tokens").limit(tokensN)
+    else df0.select("publish_date", "tokens")
 
     stage1 = None
     vocab = None
@@ -312,50 +326,28 @@ class UserLDA extends Serializable {
     stage1
   }
 
-  @transient var stage1: Option[DataFrame] = None
+  /**
+   * The word count vectorizer pipeline component.
+   *
+   */
+  def countVectorizer() = {
+    val cv = new CountVectorizer().setInputCol("tokens").setOutputCol("features").setVocabSize(vocabN).setMinTF(minTF)
+    cv
+  }
 
   /**
-   * The number of topics cluster around
+   * Calculates the sum of the maxima of each row of features.
    *
-   * A low integer, typically 3 or 5.
+   * This should be the sum of the counts, but only the max is implemented.
    *
-   * @group Model
+   * @param df0
+   * @return sum of the maximum of each of the rows
    */
-  var topicsN = 5
-
-  /**
-   * The number of iterations.
-   *
-   * Low value of 100, and can go up to 100000.
-   *
-   * @group Model
-   */
-  var itersN: Int = 10
-
-  /**
-   * This stores the log likelihood and the log perplexity of the model.
-   *
-   * The log likelihood is usually negative and it should be maximized.
-   * The perplexity is an indicator of how well the topics are clustering.
-   *
-   *  `bounds = ( model.logLikelihood(vdf0), model.logPerplexity(vdf0) )`
-   *  [log likelihood](https://en.wikipedia.org/wiki/Likelihood_function)
-   *  [log perplexity](https://en.wikipedia.org/wiki/Perplexity)
-   *
-   * @group Output
-   */
-  var bounds = ( 0.0, 0.0 )
-
-  /**
-   * The LDA model.
-   *
-   * This the model used for topic fitting. It can be stored to disk and re-used to transform new messages.
-   *
-   * This can be serialized.
-   *
-   * @group Output
-   */
-  var model0 : Option[LDAModel] = None
+  def sumArray(df0: DataFrame) = {
+    val df2 = df0.withColumn("f1", array_max(vector_to_array(col("features"))))
+    val total0 = df2.select(sum(col("f1"))).first.get(0).asInstanceOf[Double]
+    total0
+  }
 
   /**
    * Applies LDA for topic-modelling.
@@ -368,31 +360,15 @@ class UserLDA extends Serializable {
     val lda = new LDA().setK(topicsN).setMaxIter(itersN)
     val model = lda.fit(vdf0)
     model0 = Some(model)
-    bounds = ( model.logLikelihood(vdf0), model.logPerplexity(vdf0) )
+    bounds = (model.logLikelihood(vdf0), model.logPerplexity(vdf0))
     val topics0 = model.describeTopics(topicsN)
     transformed = Option(model.transform(vdf0))
     val t0 = topics0.rdd.collect().toList.map(x => new Scores0(x.getInt(0),
       x.getAs[mutable.WrappedArray[Int]](1),
-      x.getAs[mutable.WrappedArray[Double]](2)) )
+      x.getAs[mutable.WrappedArray[Double]](2)))
     topics = Some(t0)
     t0
   }
-
-  @transient var topics: Option[List[Scores0]] = None
-
-  /**
-   * The transformed messages.
-   *
-   * These will have a column of topic scores, from which one can deduce which message falls within which topic.
-   *
-   * These are the topics. They cannot be serialized.
-   *
-   * @group Output
-   */
-  @transient var transformed: Option[DataFrame] = None
-
-  // var ds1 : Option[Serializable] = None
-  var desc : Option[List[List[Scores1]]] = None
 
   /**
    * Topic and Vocabulary scores
@@ -400,14 +376,39 @@ class UserLDA extends Serializable {
    * @param byTopic the output of [[pipeline2]]
    * @return
    */
-  def pipeline3(byTopic: List[Scores0]) : Option[ List[List[Scores1]] ] = {
+  def pipeline3(byTopic: List[Scores0]): Option[List[List[Scores1]]] = {
 
     val desc0 = byTopic.map(x => x.indices.map(vocab.get).zip(x.scores))
-    val desc1 = desc0.map( _.map(x => new Scores1(x._1, x._2)).toList )
+    val desc1 = desc0.map(_.map(x => new Scores1(x._1, x._2)).toList)
 
     desc = Some(desc1)
     desc
   }
+
+  def archive0() = archiver(stage0, "stage0")
+
+  /**
+   * The stage1 dataframe uses an array in features.
+   */
+  def archive1() = {
+    var df0 = stage1.get
+
+    df0 = df0.withColumn("f1", vector_to_array(col("features")))
+    df0 = df0.drop("features")
+
+    archiver(Some(df0), stage1Name)
+  }
+
+  def stage1Name = "stage1"
+
+  def unarchive1(df1: Option[DataFrame] = None, tname: String = stage1Name) = {
+    var df0 = if (!df1.isEmpty) df1.get else Session0.instance.sql(s"select * from ${tname}")
+    df0 = df0.withColumn("features", array_to_vector(col("f1")))
+    df0 = df0.drop("f1")
+    stage1 = Some(df0)
+  }
+
+  def archive2() = archiver(transformed, "transformed")
 
   /**
    * Write the output of a pipeline to Hive.
@@ -436,31 +437,18 @@ class UserLDA extends Serializable {
     ()
   }
 
-  def archive0() = archiver(stage0, "stage0")
-
-
-  def stage1Name = "stage1"
   /**
-   * The stage1 dataframe uses an array in features.
+   * Count the messages that have had topics assigned.
+   *
+   * @return those records in (transformed) that are non-zero for one topic.
    */
-  def archive1() = {
-    var df0 = stage1.get
+  def quality0(): Array[Double] = {
+    if (transformed.isEmpty) return Array[Double]();
 
-    df0 = df0.withColumn("f1", vector_to_array(col("features")))
-    df0 = df0.drop("features")
-
-    archiver(Some(df0), stage1Name)
+    val tr0 = transformed.get.select("topicDistribution").collect()
+    val tr1 = tr0.map(_(0)).map(_.asInstanceOf[org.apache.spark.ml.linalg.DenseVector].toArray)
+    tr1.map(x => adSum(x)).filter(_ > 0)
   }
-
-  def unarchive1(df1: Option[DataFrame] = None, tname: String = stage1Name) = {
-    var df0 = if (!df1.isEmpty) df1.get else Session0.instance.sql(s"select * from ${tname}")
-    df0 = df0.withColumn("features", array_to_vector(col("f1")))
-    df0 = df0.drop("f1")
-    stage1 = Some(df0)
-  }
-
-  def archive2() = archiver(transformed, "transformed")
-
 
   // Fast sum for an array.
   def adSum(ad: Array[Double]) = {
@@ -474,25 +462,12 @@ class UserLDA extends Serializable {
   }
 
   /**
-   * Count the messages that have had topics assigned.
-   *
-   * @return those records in (transformed) that are non-zero for one topic.
-   */
-  def quality0() : Array[Double] = {
-    if (transformed.isEmpty) return Array[Double]();
-
-    val tr0 = transformed.get.select("topicDistribution").collect()
-    val tr1 = tr0.map(_(0)).map(_.asInstanceOf[org.apache.spark.ml.linalg.DenseVector].toArray)
-    tr1.map(x => adSum(x) ).filter(_ > 0)
-  }
-
-  /**
    * Print some details to the logger.
    *
    * There's a topics matrix.
    * https://spark.apache.org/docs/latest/mllib-clustering.html#latent-dirichlet-allocation-lda
    */
-  def display() {
+  def display(truncate: Boolean = true) {
     logger.info(s"topics: ${topicsN} " + s"vocabulary: size: ${model0.get.vocabSize}")
 
     val topics = model0.get.topicsMatrix
@@ -501,15 +476,22 @@ class UserLDA extends Serializable {
       for (word <- Range(0, model0.get.vocabSize)) {
         s0 += s"${topics(word, topic)} "
       }
-      logger.info(s0)
+      if (!truncate) logger.info(s0)
     }
 
-    val x0 = desc.get.zipWithIndex.foreach {
-      case (y, i) => {
-        logger.info("::" + i);
-        y.map(x => logger.info(x.word + " :: " + x.score));
+    if (!truncate) {
+      val x0 = desc.get.zipWithIndex.foreach {
+        case (y, i) => {
+          logger.info("::" + i);
+          y.map(x => logger.info(x.word + " :: " + x.score));
+        }
       }
     }
+  }
+
+  @throws[IOException]
+  private def writeObject(stream: ObjectOutputStream): Unit = {
+    stream.defaultWriteObject()
   }
 
   @throws[IOException]
@@ -517,7 +499,8 @@ class UserLDA extends Serializable {
   private def readObject(in: ObjectInputStream): Unit = {
     in.defaultReadObject
     // transformed is transient
-    transformed = None; stage0 = None
+    stage0 = None
+    transformed = None
   }
 
 }

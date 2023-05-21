@@ -53,7 +53,8 @@ class Stage1Test extends AnyFunSpec with org.scalatest.Inspectors
       modeller.stage1 should not be (None)
 
     }
-    it("archive1") {
+    it("archive1 and serialize") {
+      // the name of the stage one database and the serialization name should be the same.
       modeller.archive1()
       UserLDA.serialize(modeller)
     }

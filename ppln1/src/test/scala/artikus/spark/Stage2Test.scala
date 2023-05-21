@@ -13,65 +13,73 @@ import scala.collection.mutable
  *
  */
 class Stage2Test extends AnyFunSpec with org.scalatest.Inspectors
-    with org.scalatest.matchers.should.Matchers {
+  with org.scalatest.matchers.should.Matchers {
 
-  val logger: Logger = Logger("Stage2Test")
-  val modeller = new UserLDA()
+  var logger: Logger = Logger("Stage2Test")
+  val session = Session0.instance
+
+  val isStats = false
+
+  var modeller: Option[UserLDA] = None
   var df2: Option[DataFrame] = None
   var words: Option[List[List[Scores1]]] = None
   var desc: Option[List[mutable.WrappedArray[(String, Double)]]] = None
 
-  val isStats = false
-
   describe("LDA processing") {
+    it("unserialize - get last") {
+      modeller = UserLDA.unserialize()
+      modeller should not be null
+
+      logger.info("UserLDA: ${modeller.get.initial0}")
+    }
     it("unarchive1 - load stage1") {
-      val session = Session0.instance
-      session should not be null
+      modeller should not be null
 
-      logger.info("UserLDA: ${modeller.initial0}")
-
-      modeller.stage1 = None
       assert(Session0.instance.catalog.tableExists("stage1"))
-      modeller.unarchive1()
+      modeller.get.unarchive1()
+      modeller.get.stage1 should not be (None)
     }
     it("pipeline2 - LDA fit - topics with words then scores") {
-      modeller.stage1 should not be (None)
+      modeller.get.stage1 should not be (None)
 
       if (isStats) {
-        modeller.itersN = 100
-        modeller.topicsN = 10
+        modeller.get.itersN = 100
+        modeller.get.topicsN = 10
       }
 
-      modeller.pipeline2(modeller.stage1.get)
+      modeller.get.pipeline2(modeller.get.stage1.get)
 
-      modeller.topics should not be (None)
+      modeller.get.topics should not be (None)
     }
-    it("archive2 - write down transformed") {
-      modeller.archive2()
+    it("archive2 - transformed") {
+      modeller.get.archive2()
     }
     it("pipeline3 - topics") {
       if (isStats) {
-        modeller.vocabN = 500
-        modeller.minTF = 3.0
+        modeller.get.vocabN = 500
+        modeller.get.minTF = 3.0
       }
 
-      modeller.vocab should not be (None)
+      modeller.get.vocab should not be (None)
 
-      words = modeller.pipeline3(modeller.topics.get)
+      words = modeller.get.pipeline3(modeller.get.topics.get)
     }
     it("display - quality") {
       words should not be (None)
-      modeller.display()
+      modeller.get.display()
 
-      val tr0 = modeller.quality0()
+      val tr0 = modeller.get.quality0()
       logger.info(s"quality: ${tr0}")
     }
     it("serialize") {
       words should not be (None)
-      UserLDA.serialize(modeller)
+      UserLDA.serialize(modeller.get)
     }
+  }
+  describe("LDA processing") {
     it("close") {
       Session0.instance.close()
     }
   }
 }
+
