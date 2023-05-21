@@ -6,10 +6,17 @@ import com.typesafe.scalalogging.Logger
 import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.functions.{size,col}
 import org.scalatest.funspec.AnyFunSpec
+import org.apache.spark.sql.functions._
+import org.apache.spark.ml._
 
 /**
  * Create the input pipeline and archive.
  *
+ * The UserLDA class uses 10000 records and there is one test record in there.
+ * After CountVectorization, pipeline1, it is possible that the dataframe will be empty.
+ *
+ * To do any useful analysis, use the whole 1000000 records and increase the vocabulary size.
+ * There is a warn message in the logger if the hit rate is very low.
  */
 class Stage1Test extends AnyFunSpec with org.scalatest.Inspectors
     with org.scalatest.matchers.should.Matchers {
@@ -18,7 +25,7 @@ class Stage1Test extends AnyFunSpec with org.scalatest.Inspectors
   val modeller = new UserLDA()
   var df1: Option[DataFrame] = None
 
-  val isStats = true
+  val isStats = false
 
   describe("LDA processing") {
     it("load stage0") {
@@ -41,20 +48,10 @@ class Stage1Test extends AnyFunSpec with org.scalatest.Inspectors
       }
 
       df1 = modeller.pipeline1(modeller.stage0.get)
-
-      val vdf1 = modeller.vdf1.get
-
-      vdf1.printSchema()
-      vdf1.show(truncate=false)
-
-      // this test fails if any of the data is null.
-      val chk0 = vdf1
-        .filter( org.apache.spark.sql.functions.col("features.indices"))
-        .collect().size
-      logger.info(s"pipeline1: chk0: ${chk0}")
-      assert(0 > 1)
-
       df1 should not be (None)
+
+      df1.get.printSchema()
+      // df1.get.show(truncate=false)
 
       modeller.stage1 should not be (None)
     }

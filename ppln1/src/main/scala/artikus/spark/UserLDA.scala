@@ -1,5 +1,7 @@
 package artikus.spark
 
+import org.apache.spark.ml.linalg.{Vector, Vectors}
+import org.apache.spark.ml.functions.{array_to_vector, vector_to_array}
 import com.johnsnowlabs.nlp.DocumentAssembler
 import com.johnsnowlabs.nlp.annotators.Tokenizer
 import com.johnsnowlabs.nlp.annotators.Normalizer
@@ -17,10 +19,12 @@ import com.typesafe.scalalogging.Logger
 import java.io.{FileInputStream, FileNotFoundException, FileOutputStream, IOException, ObjectInputStream, ObjectOutputStream}
 import scala.collection.mutable
 import org.apache.hadoop.fs.{FileStatus, Path}
-import org.apache.spark.sql.functions.col
+import org.apache.spark.sql.functions.{array_max, col, sum}
 import org.apache.spark.sql.types.{ArrayType, ByteType, DoubleType, IntegerType, StringType, StructType}
 
 import java.net.URI
+import scala.math.Ordered.orderingToOrdered
+import scala.math.Ordering.Implicits.infixOrderingOps
 
 case class Scores0(id: Int, indices: mutable.WrappedArray[Int], scores: mutable.WrappedArray[Double])
 
@@ -222,7 +226,7 @@ class UserLDA extends Serializable {
    *
    * @group Model
    */
-  var tokensN: Int = 100
+  var tokensN: Int = 10000
 
   /**
    * Contains the vocabulary - all the stemmed tokens
@@ -255,11 +259,23 @@ class UserLDA extends Serializable {
     .add("tokens", ArrayType(StringType), false)
     .add("features", featuresSchema, false)
 
+  /**
+   * Calculates the sum of the maxima of each row of features.
+   *
+   * This should be the sum of the counts, but only the max is implemented.
+   * @param df0
+   * @return sum of the maximum of each of the rows
+   */
+  def sumArray(df0: DataFrame) = {
+    val df2 = df0.withColumn("f1", array_max(vector_to_array(col("features"))))
+    val total0 = df2.select(sum(col("f1"))).first.get(0).asInstanceOf[Double]
+    total0
+  }
 
   /**
    * Count vectorization of the tokens.
    *
-   * This can produce useless results if all the counts are null.
+   * This can produce useless results if all the counts are null. There is an internal test for this.
    *
    * @param df0 just the tokens from pipeline0
    * @return
@@ -268,19 +284,21 @@ class UserLDA extends Serializable {
     // vectorized tokens
     val cv = countVectorizer()
 
-    val df1 = if (tokensN > 0) df0.select("publish_date","tokens").limit(tokensN)
-    else df0.select("publish_date","tokens")
+    val df1 = if (tokensN > 0)
+      df0.select("publish_date","tokens").limit(tokensN)
+      else df0.select("publish_date","tokens")
 
     stage1 = None
     vocab = None
+    val cvModel = cv.fit(df1)
+    val df2 = cvModel.transform(df1)
+
+    val cnt0 = sumArray(df2)
+    logger.info(s"pipeline1: features-sum: ${cnt0}")
+    // this isn't right, the schema has a Vector in it.
+    // val df3 = Session0.instance.createDataFrame(df2.rdd, recordSchema)
     try {
-      val cvModel = cv.fit(df1)
-      val df2 = cvModel.transform(df1)
-      vdf1 = Some(df2)
-      val chk0 = df2
-        .filter(org.apache.spark.sql.functions.size(col("features.indices")) > 0)
-        .collect().size
-      stage1 = if (chk0 > 0) Some(df2) else None
+      stage1 = if (cnt0 > 0) Some(df2) else None
       vocab = Some(cvModel.vocabulary)
     } catch {
       case e0: Throwable => logger.debug(s"pipeline1: failure: ${e0.getStackTrace}")
@@ -288,8 +306,6 @@ class UserLDA extends Serializable {
 
     stage1
   }
-
-  @transient var vdf1: Option[DataFrame] = None
 
   @transient var stage1: Option[DataFrame] = None
 

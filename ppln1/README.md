@@ -37,6 +37,10 @@ This processes the tokens from the texts and assigns counts for each of the word
 each message. This is the input to the LDA model. And it should be similar to that given by Spark in their *Clustering*
 example.
 
+The output of this stage is problematic. It is stored as a sparse array, but it is presented as a summary array.
+Ordinarily, it is not necessary to process the `features`, but it was discovered, that when the tokens are reduced 
+to speed up the testing.
+
 ### LDA
 
 This derives Topics. These are defined as clusters of words that partition the messages in some near optimal way.
@@ -45,6 +49,22 @@ The model's output is a Topic matrix and a transformer that assigns a Topic to a
 
 ## Implementation
 
+### Stages
+
+`Stage1Test` demonstrates how to run `pipeline0` and store its results as `stage0`.
+
+### Serialization
+
+The key class is `UserLDA`. It can serialize itself, but not the data frames within it. These are stored on Hive.
+
+### Hive
+
+It is useful to store the intermediate table in Hive. Hive now runs in multi-user mode. It uses PostgreSQL on 
+another server and Hive runs on the Hadoop server.
+
+The schema of tables stored on Hive is different from when their representation within Spark. It differs in the
+representation of vectors.
+
 ### Logging
 
 Spark uses log4j. I'm using ch.qos.logback, and it reports there are two logging implementations. I cannot use 
@@ -52,14 +72,14 @@ just one.
 
 ### Encoder
 
-Some issues with the Encoder for an object. Here is an example found somewhere. 
+Some issues with the Encoder for an object. In the end, it wasn'nt needed. Here is an example found somewhere. 
 
-implicit val encodeEmployee: Encoder[Employee] = new Encoder[Employee] {
-final def apply(a: Employee): Json = Json.obj(
-("name", Json.fromString(a.name)),
-("password", Json.fromString("[REDACTED]")),
-)
-}
+    implicit val encodeEmployee: Encoder[Employee] = new Encoder[Employee] {
+       final def apply(a: Employee): Json = Json.obj(
+          ("name", Json.fromString(a.name)),
+          ("password", Json.fromString("[REDACTED]")),
+       )
+    }
 
 # Postamble
 
