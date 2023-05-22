@@ -1,7 +1,7 @@
 package artikus.spark.ctl
 
 import artikus.spark.Session0
-import artikus.spark.artikus.spark.ctl.LDA
+import artikus.spark.ctl.LDA
 import com.typesafe.scalalogging.Logger
 import org.scalatest.funspec.AnyFunSpec
 

@@ -1,4 +1,4 @@
-package artikus.spark.artikus.spark.ctl
+package artikus.spark.ctl
 
 import artikus.spark.{Session0, Stage, UserLDA}
 import com.typesafe.scalalogging.Logger
@@ -44,7 +44,7 @@ case class DbClean(args: Array[String]) extends Logged with Staging {
 
     if (!unused.isEmpty && isDelete(args)) {
       logger.info("DbClean: will delete")
-      // Session0.dropTables(unused)
+      Session0.dropTables(unused)
     }
   }
 
