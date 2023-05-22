@@ -39,9 +39,21 @@ case class DbClean(args: Array[String]) extends Logged with Staging {
 
   def run(): Unit = {
     logger.info(s"DbClean: ${args}")
-    spark.catalog.listDatabases().show()
+    val unused = Session0.unusedTables()
+    logger.info(s"DbClean: unused-tables: ${unused}")
+
+    if (!unused.isEmpty && isDelete(args)) {
+      logger.info("DbClean: will delete")
+      // Session0.dropTables(unused)
+    }
   }
 
+  protected def isDelete(args: Array[String]): Boolean = {
+    if (args.length <= 0) return false
+    logger.info(s"DbClean: argument ${args(0)}")
+    if (args(0).toLowerCase() != "delete") return false
+    true
+  }
 }
 
 case class Pi(val args: Array[String]) extends Logged with Staging {

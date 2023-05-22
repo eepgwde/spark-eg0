@@ -19,6 +19,9 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.FileSystem
 import com.typesafe.scalalogging.Logger
 
+import org.apache.hadoop.fs.{GlobFilter, PathFilter, Path}
+import java.net.URI
+
 class Identity(val version:String = "0.4")
 
 class DateID {
@@ -117,6 +120,63 @@ object Session0 {
       logger.info(s"directory ${p0} isDirectory: ${status0.get.isDirectory}; time: ${status0.get.getModificationTime}")
     else logger.info(s"file not found: ${p0}")
     status0
+  }
+
+  class DirFilter extends PathFilter {
+    def accept(path: Path): Boolean = Session0.fs.getFileStatus(path).isDirectory
+  }
+
+  /**
+   * A file matcher for the timestamp stamp.
+   *
+   * See [[DateID.ISO_8601BASIC_DATE_PATTERN]] and these must be directories.
+   */
+  val backupsFltr = new GlobFilter("*T*Z", new DirFilter())
+
+  /**
+   * List the unused tables: remove tables that no longer have control objects.
+   *
+   * The control object is a serialized file. It is contained in a directory with a timestamp as its name
+   * This is the *Suffix* and the extant control objects are the *Control-Suffixes*.
+   *
+   * See [[UserLDA.instance0]] and [[DateID.ISO_8601BASIC_DATE_PATTERN]] for its format.
+   *
+   * The database tables also have a suffix of the same format and these are the *Table-Suffixes*.
+   *
+   * It is possible to delete the tables that have *Table-Suffixes* that are not in the *Control-Suffixes*.
+   */
+  def unusedTables() = {
+    // get the Control-Suffixes
+    val wd0 = Session0.fs.getWorkingDirectory()
+    val names0 = Session0.fs.listStatus(wd0, backupsFltr).map(_.getPath.getName)
+
+    // get the tables with a '_' in the name.
+    // this could be a better filter.
+    val tables0 = Session0.instance.catalog.listTables()
+      .select("name").collect()
+      .map(_.getString(0)).filter(_.contains("_"))
+      .map(_.toUpperCase)
+
+    // this will get the string after the '_'
+    val fTake = (x: String) => x.takeRight(x.length - x.indexOf('_') - 1)
+
+    // simplify the table list to just Table-Suffixes.
+    val tables1 = tables0.map(x => fTake(x))
+    // set difference
+    val unused0 = tables1.toSet.diff(names0.toSet)
+
+    // form a Zip of all the tables with the suffix.
+    val tables2 = tables0.map(x => (x, fTake(x)))
+
+    // filter those that are unused.
+    val toDrop = tables2.filter(x => unused0.contains(x._2)).map(x => x._1)
+    toDrop
+  }
+
+  def dropTables(tables0: Array[String]) = {
+    tables0.foreach { x =>
+      Session0.instance.sql(s"drop table if exists ${x}")
+    }
   }
 
   def configure(): SparkConf = {
