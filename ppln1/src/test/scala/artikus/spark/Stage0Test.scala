@@ -21,7 +21,9 @@ class Stage0Test extends AnyFunSpec with org.scalatest.Inspectors
   val modeller = new UserLDA()
   var df1: Option[DataFrame] = None
 
-  describe("LDA processing") {
+  var archiving = false
+
+  describe("LDA pre-processing") {
     it("pipeline0 - load and simplify") {
       val spark = Session0.instance
       spark should not be null
@@ -44,9 +46,14 @@ class Stage0Test extends AnyFunSpec with org.scalatest.Inspectors
       df1 = Some(modeller.pipeline0(df0))
       df1 should not be (None)
     }
-    it("archive0 - write the stage0 table to Hive") {
-      modeller.archive0()
+    it("archive0 and serialize - write the stage0 table to Hive and serialize") {
+      if (archiving) modeller.archive0()
+
+      UserLDA.serialize(modeller)
     }
+  }
+
+  describe("Spark close") {
     it("close") {
       Session0.instance.close()
     }

@@ -20,6 +20,12 @@ case class Scores0(id: Int, indices: mutable.WrappedArray[Int], scores: mutable.
 
 case class Scores1(word: String, score: Double)
 
+
+object Stage extends Enumeration {
+  type Stage = Value
+  val Blank, Raw0, CV1, LDA2, LDA3, Post4 = Value
+}
+
 /**
  * Allows for archival of the whole object.
  */
@@ -32,17 +38,17 @@ object UserLDA {
   val serialName = "UserLDA.ser"
 
   def serialize(in0: UserLDA, path: String = serialName) = {
-    logger.info(s"modeller: in0: ${in0.hashCode()}")
+    logger.debug(s"modeller: in0: ${in0.hashCode()}")
     val p1 = mkPrefix(in0.initial0, path)
 
-    logger.info(s"serialize: ${p1}")
+    logger.debug(s"serialize: ${p1}")
     val d0 = p1.getParent()
 
     // try and make the directory
     try {
       Session0.fs.mkdirs(d0)
     } catch {
-      case e0: FileNotFoundException => logger.info("directory not present: " + d0)
+      case e0: FileNotFoundException => logger.debug("directory not present: " + d0)
       case _: Throwable => logger.warn(s"serialize: directory may exist")
     } finally {
       Session0.logFileStatus(d0)
@@ -68,7 +74,7 @@ object UserLDA {
     new Path(tpath)
   }
 
-  def unserialize(path: Option[Path] = None) = {
+  def unserialize(path: Option[Path] = None): Option[UserLDA] = {
     var t0: Option[UserLDA] = None
     var tpath = path
 
@@ -76,14 +82,16 @@ object UserLDA {
       // get the most recent
       // Get all the directories
       val g0 = Session0.fs.globStatus(new Path(s"${UserLDA.userBase}/*T*Z"))
+      if (g0.isEmpty) return t0
+
       val gmax = g0.filter(_.isDirectory).map(_.getModificationTime).max
-      logger.info(s"gmax: ${gmax}")
+      logger.debug(s"gmax: ${gmax}")
       val first = g0.filter(_.getModificationTime == gmax)
-      logger.info(s"first: length: ${first.length}; first: ${first.head}; path: ${first.head.getPath}")
+      logger.debug(s"first: length: ${first.length}; first: ${first.head}; path: ${first.head.getPath}")
       tpath = Some(Path.mergePaths(first.head.getPath, prefix0(serialName)))
     }
     val r0 = Session0.logFileStatus(tpath.get)
-    if (!r0.isEmpty) {
+    if (r0.isDefined) {
       val ois = new ObjectInputStream(Session0.fs.open(tpath.get)) {
         override def resolveClass(desc: java.io.ObjectStreamClass): Class[_] = {
           try {
@@ -124,12 +132,14 @@ object UserLDA {
  *
  */
 class UserLDA extends Serializable {
-  val logger: Logger = UserLDA.logger
+  val logger: Logger = Logger("UserLDA")
 
   /**
    * Unique timestamp and identity for this object.
    */
   val initial0 = DateID.initial0
+
+  var stage : Stage.Value = Stage.Blank
 
   // collates the input.
   val document_assembler = new DocumentAssembler().setInputCol("headline_text").setOutputCol("document").setCleanupMode("shrink")
@@ -300,6 +310,8 @@ class UserLDA extends Serializable {
    * @return
    */
   def pipeline1(df0: DataFrame): Option[DataFrame] = {
+    logger.debug(s"pipeline1: entry: ${vocabN} ${minTF}")
+
     // vectorized tokens
     val cv = countVectorizer()
 
@@ -309,11 +321,14 @@ class UserLDA extends Serializable {
 
     stage1 = None
     vocab = None
+    logger.debug(s"pipeline1: fit: ${tokensN}")
     val cvModel = cv.fit(df1)
+    logger.debug(s"pipeline1: transform: ${tokensN}")
     val df2 = cvModel.transform(df1)
 
+    logger.debug(s"pipeline1: sumArray: ${df2.count()}")
     val cnt0 = sumArray(df2)
-    logger.info(s"pipeline1: features-sum: ${cnt0}")
+    logger.debug(s"pipeline1: features-sum: ${cnt0}")
     // this isn't right, the schema has a Vector in it.
     // val df3 = Session0.instance.createDataFrame(df2.rdd, recordSchema)
     try {
@@ -358,11 +373,16 @@ class UserLDA extends Serializable {
    */
   def pipeline2(vdf0: DataFrame): List[Scores0] = {
     val lda = new LDA().setK(topicsN).setMaxIter(itersN)
+
+    logger.debug(s"pipeline2: fit: ${itersN}")
     val model = lda.fit(vdf0)
     model0 = Some(model)
     bounds = (model.logLikelihood(vdf0), model.logPerplexity(vdf0))
     val topics0 = model.describeTopics(topicsN)
+
+    logger.debug(s"pipeline2: transform: ${itersN}")
     transformed = Option(model.transform(vdf0))
+    logger.debug(s"pipeline2: transformed: ${transformed.get.count()}")
     val t0 = topics0.rdd.collect().toList.map(x => new Scores0(x.getInt(0),
       x.getAs[mutable.WrappedArray[Int]](1),
       x.getAs[mutable.WrappedArray[Double]](2)))
@@ -433,7 +453,7 @@ class UserLDA extends Serializable {
     spark.sql(s"create table ${tname} AS select * from t${aname}")
     spark.sql(s"drop table if exists t${aname}")
 
-    logger.info(s"table-names: ${spark.tableNames()}")
+    logger.debug(s"table-names: ${spark.tableNames()}")
     ()
   }
 
@@ -468,7 +488,7 @@ class UserLDA extends Serializable {
    * https://spark.apache.org/docs/latest/mllib-clustering.html#latent-dirichlet-allocation-lda
    */
   def display(truncate: Boolean = true) {
-    logger.info(s"topics: ${topicsN} " + s"vocabulary: size: ${model0.get.vocabSize}")
+    logger.debug(s"topics: ${topicsN} " + s"vocabulary: size: ${model0.get.vocabSize}")
 
     val topics = model0.get.topicsMatrix
     for (topic <- Range(0, topicsN)) {
@@ -476,31 +496,109 @@ class UserLDA extends Serializable {
       for (word <- Range(0, model0.get.vocabSize)) {
         s0 += s"${topics(word, topic)} "
       }
-      if (!truncate) logger.info(s0)
+      if (!truncate) logger.debug(s0)
     }
 
     if (!truncate) {
       val x0 = desc.get.zipWithIndex.foreach {
         case (y, i) => {
-          logger.info("::" + i);
-          y.map(x => logger.info(x.word + " :: " + x.score));
+          logger.debug("::" + i);
+          y.map(x => logger.debug(x.word + " :: " + x.score));
         }
       }
     }
   }
 
+  /**
+   * Controls whether the object will automatically archive.
+   */
+  var archiving = true
+
+  /**
+   * Write the object and the dataframes to Hive.
+   * @param stream
+   * @throws
+   */
   @throws[IOException]
   private def writeObject(stream: ObjectOutputStream): Unit = {
+    logger.debug(s"writeObject: entry; ${stage} ; ${hashCode()} ; ${initial0}")
+
+    if (archiving) {
+
+      stage match {
+        case Stage.Blank =>
+          if (stage0.isDefined) {
+            archive0()
+            stage = Stage.Raw0
+          }
+
+        case Stage.Raw0 =>
+          if (stage1.isDefined) {
+            archive1()
+            stage = Stage.CV1
+          }
+
+        case Stage.CV1 =>
+          if (transformed.isDefined) {
+            archive2()
+            stage = Stage.LDA2
+          }
+
+        case _ => logger.debug(s"writeObject: unknown: ${stage}")
+      }
+
+    }
+    logger.debug(s"writeObject: exit: ${stage} ; ${hashCode()} ; ${initial0}")
     stream.defaultWriteObject()
   }
 
+  /**
+   * Load the object and the dataframes.
+   *
+   * Be sure to load the table that is specific to this object. This uses [[initial0]].
+   *
+   * @param in this object with instantiated data frames.
+   * @throws
+   * @throws
+   */
   @throws[IOException]
   @throws[ClassNotFoundException]
   private def readObject(in: ObjectInputStream): Unit = {
     in.defaultReadObject
-    // transformed is transient
-    stage0 = None
-    transformed = None
+    // until the object has been read, there is no logger.
+    logger.debug(s"readObject: entry: stage: ${stage}")
+
+    // be sure to set these to something consistent early on.
+    if (stage0 == null) stage0 = None
+    if (stage1 == null) stage1 = None
+    if (transformed == null) transformed = None
+
+    val tnamer = (tname: String) => s"${tname}_${initial0.toUpperCase()}"
+    val loader = (tname: String) => { val t0=tnamer(tname); Some(Session0.instance.sql(s"select * from ${tname}")) }
+
+    if (archiving) {
+      stage match {
+        case Stage.Raw0 =>
+          if (Session0.instance.catalog.tableExists(tnamer("stage0"))) {
+            stage0 = loader("stage0")
+          }
+
+        case Stage.CV1 =>
+          if (Session0.instance.catalog.tableExists(tnamer("stage1"))) {
+            unarchive1(tname = tnamer("stage1"))
+          }
+
+        case Stage.LDA2 =>
+          if (Session0.instance.catalog.tableExists(tnamer("transformed"))) {
+            transformed = loader("transformed")
+          }
+
+        case _ => logger.debug(s"readObject: unknown: ${stage}")
+      }
+
+    }
+    logger.debug(s"readObject: exit: stage: ${stage}")
+
   }
 
 }

@@ -140,6 +140,8 @@ object Session0 {
     conf.set("spark.sql.catalogImplementation", "hive")
     conf.set("spark.sql.warehouse.dir", "file:///home/hadoop/data/hive")
     conf.set("spark.driver.extraClassPath", ":/misc/build/0/classes/:/usr/share/java/postgresql.jar")
+    // conf.set("spark.rdd.compress", "true")
+    conf.set("spark.submit.deployMode", "client")
 
     conf
   }
@@ -156,8 +158,12 @@ object Session0 {
    * @return the SparkSession
    */
   def instance: SparkSession = {
+    //
     if (session0.isEmpty) {
-      val s1 = SparkSession.builder().config(config0).master("local[*]").getOrCreate()
+      var mtype: String = ""
+      mtype = "spark://k1:7077"
+      mtype = "local[*]"
+      val s1 = SparkSession.builder().config(config0).master(mtype).getOrCreate()
       session0 = Some(s1)
     }
 
@@ -165,7 +171,7 @@ object Session0 {
   }
 
   def stop(): Unit = {
-    session0.get.sparkContext.stop()
+    if (session0.isDefined) session0.get.stop()
   }
 
   def close(): Unit = stop()

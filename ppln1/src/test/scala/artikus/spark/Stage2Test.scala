@@ -19,27 +19,35 @@ class Stage2Test extends AnyFunSpec with org.scalatest.Inspectors
   val session = Session0.instance
 
   val isStats = false
+  var archiving = false
 
   var modeller: Option[UserLDA] = None
   var df2: Option[DataFrame] = None
   var words: Option[List[List[Scores1]]] = None
   var desc: Option[List[mutable.WrappedArray[(String, Double)]]] = None
 
-  describe("LDA processing") {
+  describe("LDA processing 1 - LDA") {
     it("unserialize - get last") {
       modeller = UserLDA.unserialize()
       modeller should not be null
+      modeller should not be (None)
 
       logger.info("UserLDA: ${modeller.get.initial0}")
     }
     it("unarchive1 - load stage1") {
-      modeller should not be null
+      modeller should not be (None)
 
       assert(Session0.instance.catalog.tableExists("stage1"))
-      modeller.get.unarchive1()
+      if (archiving) modeller.get.unarchive1()
+
+      modeller.get.stage1 should not be null
       modeller.get.stage1 should not be (None)
+
+      logger.info("UserLDA: ${modeller.get.stage}")
+      modeller.get.stage should be (Stage.CV1)
     }
     it("pipeline2 - LDA fit - topics with words then scores") {
+      modeller should not be (None)
       modeller.get.stage1 should not be (None)
 
       if (isStats) {
@@ -48,13 +56,15 @@ class Stage2Test extends AnyFunSpec with org.scalatest.Inspectors
       }
 
       modeller.get.pipeline2(modeller.get.stage1.get)
-
       modeller.get.topics should not be (None)
+      modeller.get.transformed should not be (None)
     }
     it("archive2 - transformed") {
-      modeller.get.archive2()
+      modeller should not be (None)
+      if (archiving) modeller.get.archive2()
     }
     it("pipeline3 - topics") {
+      modeller should not be (None)
       if (isStats) {
         modeller.get.vocabN = 500
         modeller.get.minTF = 3.0
@@ -65,6 +75,7 @@ class Stage2Test extends AnyFunSpec with org.scalatest.Inspectors
       words = modeller.get.pipeline3(modeller.get.topics.get)
     }
     it("display - quality") {
+      modeller should not be (None)
       words should not be (None)
       modeller.get.display()
 
@@ -72,11 +83,13 @@ class Stage2Test extends AnyFunSpec with org.scalatest.Inspectors
       logger.info(s"quality: ${tr0}")
     }
     it("serialize") {
+      modeller should not be (None)
       words should not be (None)
       UserLDA.serialize(modeller.get)
     }
   }
-  describe("LDA processing") {
+
+  describe("Spark close") {
     it("close") {
       Session0.instance.close()
     }

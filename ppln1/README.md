@@ -27,6 +27,10 @@ The corpus can be stored within the cluster on HDFS or within Hive.
 A series of Spark jobs can then be submitted to analyze the texts under different configurations. This would use a
 some cross-validation resampling to find some robust topics.
 
+### Technology Issues
+
+Using Hive to capture the data frames is very slow. 
+
 ### Pre-processing 
 
 The Natural Language Processing pipeline converts texts to counts of words.
@@ -49,6 +53,14 @@ The model's output is a Topic matrix and a transformer that assigns a Topic to a
 
 ## Implementation
 
+### Testing with Classes and Jar files
+
+Jupyter notebook Spylon and Python can access the classes by /misc/build/0/classes. This should be set to be a soft 
+link like so `classes -> spark-eg0/ppln1/target/scala-2.12/classes`. Unfortunately, the classes trick does not work.
+It is better to build a Fat Jar and add that to the launcher.jars array.
+
+[sbt-assembly](https://github.com/sbt/sbt-assembly)  as directed in [Baeldung](https://www.baeldung.com/scala/sbt-fat-jar)
+
 ### Stages
 
 `Stage1Test` demonstrates how to run `pipeline0` and store its results as `stage0`.
@@ -57,13 +69,22 @@ The model's output is a Topic matrix and a transformer that assigns a Topic to a
 
 The key class is `UserLDA`. It can serialize itself, but not the data frames within it. These are stored on Hive.
 
+This is very slow, so a state machine is used internally to manage which tables are archived and restored.
+
 ### Hive
 
 It is useful to store the intermediate table in Hive. Hive now runs in multi-user mode. It uses PostgreSQL on 
 another server and Hive runs on the Hadoop server.
 
 The schema of tables stored on Hive is different from when their representation within Spark. It differs in the
-representation of vectors.
+representation of vectors. This means there are specialized archive and unarchive methods for the Count Vectorisation
+data frame.
+
+Hive maintenance can be done with Jupyter and using Spark SQL, but Hive has a command-line client called Beeline. 
+Invoked as simply `beeline`, it supports a ReadLine interface. There is a default username and password of scott 
+and tiger.
+
+    jdbc:hive2://k1:10000> !connect jdbc:hive2://k1:10000 scott tiger
 
 ### Logging
 
